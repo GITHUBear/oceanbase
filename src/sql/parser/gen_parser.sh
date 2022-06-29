@@ -32,3 +32,4 @@ sed "/Setup the input buffer state to scan the given bytes/,/}/{/int i/d}" -i sq
 sed "/Setup the input buffer state to scan the given bytes/,/}/{/for ( i = 0; i < _yybytes_len; ++i )/d}" -i sql_parser_mysql_mode_lex.c
 sed "/Setup the input buffer state to scan the given bytes/,/}/{s/\tbuf\[i\] = yybytes\[i\]/memcpy(buf, yybytes, _yybytes_len)/g}" -i sql_parser_mysql_mode_lex.c
 sed "/YY_EXIT_FAILURE/,/}/{s/yyconst char\* msg , yyscan_t yyscanner/yyconst char* msg , yyscan_t yyscanner __attribute__((unused))/g}" -i sql_parser_mysql_mode_lex.c
+echo "gen_parse ok"

@@ -391,7 +391,7 @@ END_P SET_VAR DELIMITER
 %type <node> drop_index_stmt hint_options opt_expr_as_list expr_as_list expr_with_opt_alias substr_params opt_comma substr_or_substring
 %type <node> /*frozen_type*/ opt_binary
 %type <node> ip_port
-%type <node> create_view_stmt view_name opt_column_list opt_table_id view_select_stmt
+%type <node> create_view_stmt view_name opt_column_list opt_table_id view_select_stmt create_materialized_view_stmt
 %type <node> name_list
 %type <node> partition_role zone_desc opt_zone_desc server_or_zone opt_server_or_zone opt_partitions opt_subpartitions add_or_alter_zone_options alter_or_change_or_modify
 %type <node> partition_id_desc opt_tenant_list_or_partition_id_desc partition_id_or_server_or_zone opt_create_timestamp change_actions change_action add_or_alter_zone_option
@@ -475,6 +475,7 @@ opt_end_p:
 /* only preparable statement will set question mark size */
 stmt:
     select_stmt             { $$ = $1; question_mark_issue($$, result); }
+  | create_materialized_view_stmt  { $$ = $1; question_mark_issue($$, result); }
   | insert_stmt             { $$ = $1; question_mark_issue($$, result); }
   | create_table_stmt       { $$ = $1; check_question_mark($$, result); }
   | create_function_stmt    { $$ = $1; check_question_mark($$, result); }
@@ -6309,6 +6310,14 @@ view_select_stmt:
 select_stmt
 {
   $$ = $1;
+}
+;
+
+create_materialized_view_stmt:
+CREATE MATERIALIZED VIEW view_name AS select_stmt
+{
+  $4;
+  $$ = $6; /* Use select_stmt for MV temporarily */
 }
 ;
 

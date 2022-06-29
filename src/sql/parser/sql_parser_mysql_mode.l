@@ -232,6 +232,7 @@ LOCAL                         { REPUT_TOKEN_NEG_SIGN(LOCAL); }
 LOCALTIME                     { REPUT_TOKEN_NEG_SIGN(LOCALTIME); }
 LOCALTIMESTAMP                { REPUT_TOKEN_NEG_SIGN(LOCALTIMESTAMP); }
 LOCK                          { REPUT_TOKEN_NEG_SIGN(LOCK_); }
+LOG                           { REPUT_TOKEN_NEG_SIGN(LOG); }
 LONG                          { REPUT_TOKEN_NEG_SIGN(LONG); }
 LONGBLOB                      { REPUT_TOKEN_NEG_SIGN(LONGBLOB); }
 LONGTEXT                      { REPUT_TOKEN_NEG_SIGN(LONGTEXT); }
@@ -240,6 +241,7 @@ LOW_PRIORITY                  { REPUT_TOKEN_NEG_SIGN(LOW_PRIORITY); }
 MASTER_BIND                   { REPUT_TOKEN_NEG_SIGN(MASTER_BIND); }
 MASTER_SSL_VERIFY_SERVER_CERT { REPUT_TOKEN_NEG_SIGN(MASTER_SSL_VERIFY_SERVER_CERT); }
 MATCH                         { REPUT_TOKEN_NEG_SIGN(MATCH); }
+MATERIALIZED                  { REPUT_TOKEN_NEG_SIGN(MATERIALIZED); }
 MAXVALUE                      { REPUT_TOKEN_NEG_SIGN(MAXVALUE); }
 MEDIUMBLOB                    { REPUT_TOKEN_NEG_SIGN(MEDIUMBLOB); }
 MEDIUMINT                     { REPUT_TOKEN_NEG_SIGN(MEDIUMINT); }
@@ -343,6 +345,7 @@ VARBINARY                     { REPUT_TOKEN_NEG_SIGN(VARBINARY); }
 VARCHAR                       { REPUT_TOKEN_NEG_SIGN(VARCHAR); }
 VARCHARACTER                  { REPUT_TOKEN_NEG_SIGN(VARCHAR); }
 VARYING                       { REPUT_TOKEN_NEG_SIGN(VARYING); }
+VIEW                          { REPUT_TOKEN_NEG_SIGN(VIEW); }
 VIRTUAL                       { REPUT_TOKEN_NEG_SIGN(VIRTUAL); }
 WHERE                         { REPUT_TOKEN_NEG_SIGN(WHERE); }
 WHEN                          { REPUT_TOKEN_NEG_SIGN(WHEN); }
