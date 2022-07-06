@@ -2860,7 +2860,7 @@ int ObSql::parser_and_check(const ObString &outlined_stmt, ObExecContext &exec_c
               }
             }
           } else if (T_EXPLAIN != type) {
-            session->set_use_static_typing_engine(false);
+            session->set_use_static_typing_engine(false); // Without extra effort, CREATE_MATERIALIZED_VIEW can arrive here normally.
           }
         }
       }
@@ -3160,6 +3160,108 @@ int ObSql::need_add_plan(const ObPlanCacheCtx &pc_ctx, ObResultSet &result, bool
   return ret;
 }
 
+int ObSql::get_create_mv_parse_tree_groupby_columns(ParseNode* select_clause_groupby_node, ObArray<uint64_t>& column_refs)
+{
+  int ret = OB_SUCCESS;
+  ParseNode* with_rollup_clause = select_clause_groupby_node->children_[0];
+  ParseNode* sort_list = nullptr;
+  if (OB_ISNULL(with_rollup_clause)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
+  } else if (OB_ISNULL(sort_list = with_rollup_clause->children_[1])) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
+  } else {
+    for (int i = 0; i < sort_list->num_child_; ++i) {
+      if (sort_list->children_[i]->children_[0]->type_ != T_COLUMN_REF) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("Complex expr is not supported by materialized view", K(ret));
+        break;
+      }
+      column_refs.push_back((uint64_t)(sort_list->children_[i]->children_[0]));
+    }
+  }
+  return ret;
+}
+
+char* ObSql::get_alias_fun_project_node_name(ObItemType type, ParseNode* function_project_node, void* malloc_pool) {
+  char* alias_name = nullptr;
+  ParseNode* function_col_ident_node = function_project_node->children_[1]->children_[2];
+  switch (type)
+  {
+  case T_FUN_SUM: {
+    alias_name = static_cast<char*>(parse_malloc(function_col_ident_node->str_len_ + 5, malloc_pool));
+    memmove(alias_name, "SUM_", 4);
+    memmove(alias_name + 4, function_col_ident_node->str_value_, function_col_ident_node->str_len_);
+    alias_name[function_col_ident_node->str_len_ + 4] = '\0';
+    break;
+  }
+  case T_FUN_MIN: {
+    alias_name = static_cast<char*>(parse_malloc(function_col_ident_node->str_len_ + 5, malloc_pool));
+    memmove(alias_name, "MIN_", 4);
+    memmove(alias_name + 4, function_col_ident_node->str_value_, function_col_ident_node->str_len_);
+    alias_name[function_col_ident_node->str_len_ + 4] = '\0';
+    break;
+  }
+  case T_FUN_MAX: {
+    alias_name = static_cast<char*>(parse_malloc(function_col_ident_node->str_len_ + 5, malloc_pool));
+    memmove(alias_name, "MAX_", 4);
+    memmove(alias_name + 4, function_col_ident_node->str_value_, function_col_ident_node->str_len_);
+    alias_name[function_col_ident_node->str_len_ + 4] = '\0';
+    break;
+  }
+  case T_FUN_AVG: {
+    alias_name = static_cast<char*>(parse_malloc(function_col_ident_node->str_len_ + 5, malloc_pool));
+    memmove(alias_name, "AVG_", 4);
+    memmove(alias_name + 4, function_col_ident_node->str_value_, function_col_ident_node->str_len_);
+    alias_name[function_col_ident_node->str_len_ + 4] = '\0';
+    break;
+  }
+  case T_FUN_COUNT: {
+    alias_name = static_cast<char*>(parse_malloc(function_col_ident_node->str_len_ + 7, malloc_pool));
+    memmove(alias_name, "COUNT_", 6);
+    memmove(alias_name + 6, function_col_ident_node->str_value_, function_col_ident_node->str_len_);
+    alias_name[function_col_ident_node->str_len_ + 6] = '\0';
+    break;
+  }
+  default:
+    break;
+  }
+  return alias_name;
+}
+
+int ObSql::make_column_ref_node(ParseNode*& new_node, const char* col_name, int64_t col_len, void* malloc_pool) {
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(new_node = new_terminal_node(malloc_pool, T_IDENT))) {
+    ret = OB_PARSER_ERR_NO_MEMORY;
+    LOG_WARN("No more space for parse malloc\n");
+  } else if (OB_ISNULL(new_node->str_value_ = parse_strndup(col_name, col_len, malloc_pool))) {
+    ret = OB_PARSER_ERR_NO_MEMORY;
+    LOG_WARN("No more space for parse malloc\n");
+  }
+  if (OB_FAIL(ret)) return ret;
+  new_node->str_len_ = col_len;
+  if (OB_ISNULL(new_node = new_non_terminal_node(malloc_pool, T_COLUMN_REF, 3, NULL, NULL, new_node))) {
+    ret = OB_PARSER_ERR_NO_MEMORY;
+    LOG_WARN("No more space for parse malloc\n");
+  } else if (OB_ISNULL(new_node->str_value_ = parse_strndup(col_name, col_len, malloc_pool))) {
+    ret = OB_PARSER_ERR_NO_MEMORY;
+    LOG_WARN("No more space for parse malloc\n");
+  }
+  if (OB_FAIL(ret)) return ret;
+  new_node->str_len_ = col_len;
+  if (OB_ISNULL(new_node = new_non_terminal_node(malloc_pool, T_PROJECT_STRING, 1, new_node))) {
+    ret = OB_PARSER_ERR_NO_MEMORY;
+    LOG_WARN("No more space for parse malloc\n");
+  } else if (OB_ISNULL(new_node->str_value_ = parse_strndup(col_name, col_len, malloc_pool))) {
+    ret = OB_PARSER_ERR_NO_MEMORY;
+    LOG_WARN("No more space for parse malloc\n");
+  }
+  if (OB_FAIL(ret)) return ret;
+  new_node->str_len_ = col_len;
+  return ret;
+}
+
 int ObSql::handle_physical_plan(
     const ObString &trimed_stmt, ObSqlCtx &context, ObResultSet &result, ObPlanCacheCtx &pc_ctx, const int get_plan_err)
 {
@@ -3218,6 +3320,264 @@ int ObSql::handle_physical_plan(
     ret = STATIC_ENG_NOT_IMPLEMENT;
     LOG_WARN("static engine not implement batched multi stmt, will retry", K(ret));
   }
+
+  if (OB_SUCC(ret)) {
+    ParseNode* stmt_node = parse_result.result_tree_->children_[0];
+    // 1. Handle CREATE MATERIALIZED VIEW parse_tree_ rewrite
+    if (stmt_node->type_ == ObItemType::T_CREATE_MATERIALIZED_VIEW) {
+      LOG_DEBUG("Parsed CREATE MATERIALIZED VIEW statement", K(stmt_node));
+      ParseNode* select_clause_node = stmt_node->children_[1];
+      ParseNode* select_clause_project_list = select_clause_node->children_[PARSE_SELECT_SELECT];
+      ParseNode* select_clause_groupby_node = select_clause_node->children_[PARSE_SELECT_GROUP];
+      if (OB_ISNULL(select_clause_node)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
+      } else if (OB_ISNULL(select_clause_project_list)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
+      } else if (OB_ISNULL(select_clause_groupby_node)) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("Materialized view is valid only for aggregate functions currently.");
+      } else {
+        // select ... from ... group by ...
+        // 1. get aggregate function name
+        // select_clause_project_list                  T_PROJECT_LIST
+        //                           ->children_[0..]  T_PROJECT_STRING
+        //                           ->children_[0]    T_COLUMN_REF / T_FUN_*   <----
+        // if T_FUN_* get fun type   ->children_[1]    T_COLUMN_REF             <----
+        // 2. get group by column name list as primary key
+        // select_clause_groupby_node->children_[0]    T_WITH_ROLLUP_CLAUSE
+        //                           ->children_[1]    T_SORT_LIST
+        //                           ->children_[0..]  T_SORT_KEY
+        //                           ->children_[0]    T_COLUMN_REF    <---- support column_ref only for now
+        //                           ->children_[2]    T_IDENT / T_STAR
+        // A function is needed for T_SORT_LIST
+        // a. Analysis
+        ObArray<uint64_t> groupby_columns;
+        ObArray<uint64_t> function_node_pos;         // index of select_clause_project_list->children_
+        ObArray<uint64_t> missing_groupby_col_pos;   // index of groupby_columns
+        bool has_star_column = false;
+        common::hash::ObHashSet<ObString> select_column_str;
+        if (OB_FAIL(ret = select_column_str.create(select_clause_project_list->num_child_))) {
+          LOG_WARN("failed to init hashset", K(ret), K(select_clause_project_list->num_child_));
+        } else {
+          // TODO: add some flags in ParseNode
+          for (int i = 0; i < select_clause_project_list->num_child_; ++i) {
+            ParseNode* project_node = select_clause_project_list->children_[i]->children_[0];
+            ObItemType project_type = project_node->type_;
+            switch (project_type) {
+            case T_FUN_SUM: {
+              function_node_pos.push_back(i);
+              break;
+            }
+            case T_FUN_MIN: {
+              // TODO:
+              break;
+            }
+            case T_FUN_MAX: {
+              // TODO:
+              break;
+            }
+            case T_FUN_AVG: {
+              // TODO:
+              break;
+            }
+            case T_FUN_COUNT: {
+              // TODO:
+              break;
+            }
+            case T_COLUMN_REF: {
+              ParseNode* column_ident_node = project_node->children_[2];
+              if (OB_ISNULL(column_ident_node)) {
+                ret = OB_ERR_UNEXPECTED;
+                LOG_WARN("get unexpected null", K(ret));
+              } else if (T_IDENT == column_ident_node->type_) {
+                ObString project_str;
+                project_str.assign_ptr(project_node->str_value_, project_node->str_len_);
+                if (OB_HASH_EXIST == (ret = select_column_str.set_refactored(project_str, 0))) {
+                  /* ignore duplicate project string in Parser, delay to resolver */
+                  ret = OB_SUCCESS;
+                } else if (OB_FAIL(ret)) {
+                  LOG_WARN("failed to set hashset", K(ret), K(project_str));
+                } else {
+                  /* do nothing */
+                }
+              } else if (T_STAR == column_ident_node->type_) {
+                has_star_column = true;
+              } else {
+                ret = OB_NOT_SUPPORTED;
+                LOG_WARN("Materialized view is valid only for T_IDENT col & T_STAR col in select_clause currently", K(ret));
+              }
+              break;
+            }
+            default: {
+              ret = OB_NOT_SUPPORTED;
+              break;
+            }
+            }
+            if (OB_FAIL(ret)) break;
+          }
+
+          if (OB_FAIL(ret)) {
+            /* do nothing */
+          } else if (OB_FAIL(ret = get_create_mv_parse_tree_groupby_columns(select_clause_groupby_node, groupby_columns))) {
+            LOG_WARN("Get groupby columns from CREATE MATERIALIZED VIEW failed", K(ret));
+          } else {
+            ParseNode* groupby_column_refs = nullptr;
+            for (int i = 0; i < groupby_columns.size(); ++i) {
+              groupby_column_refs = (ParseNode*)(groupby_columns.at(i));
+              if (T_IDENT != groupby_column_refs->children_[2]->type_) {
+                ret = OB_NOT_SUPPORTED;
+                LOG_WARN("Materialized view is valid only for T_IDENT col in select_groupby_clause currently", K(ret));
+                break;
+              } else {
+                ObString groupby_column_str;
+                groupby_column_str.assign_ptr(groupby_column_refs->str_value_, groupby_column_refs->str_len_);
+                if (!has_star_column) {
+                  if (OB_HASH_EXIST == (ret = select_column_str.set_refactored(groupby_column_str, 0))) {
+                    ret = OB_SUCCESS;
+                  } else if (OB_FAIL(ret)) {
+                    LOG_WARN("failed to set hashset", K(ret), K(groupby_column_str));
+                    break;
+                  } else {
+                    missing_groupby_col_pos.push_back(i);
+                  }
+                }
+              }
+            }
+          }
+          // b. rewrite
+          if (OB_FAIL(ret)) {
+            /* do_nothing */
+          } else {
+            // 1. set alias of T_FUN project node
+            for (int i = 0; i < function_node_pos.size(); ++i) {
+              int idx = function_node_pos.at(i);
+              ParseNode* function_project_node = select_clause_project_list->children_[idx]->children_[0];
+              ParseNode* alias_node = nullptr, *ident_node = nullptr;
+              char* new_ident_str = get_alias_fun_project_node_name(function_project_node->type_, 
+                                                                    function_project_node, 
+                                                                    parse_result.malloc_pool_);
+              if (OB_ISNULL(new_ident_str)) {
+                ret = OB_ERR_UNEXPECTED;
+                LOG_WARN("get unexpected null", K(ret));
+                break;
+              } else if (OB_ISNULL(ident_node = new_terminal_node(parse_result.malloc_pool_, T_IDENT))) {
+                ret = OB_PARSER_ERR_NO_MEMORY;
+                LOG_WARN("No more space for parse malloc\n");
+                break;
+              }
+              if (OB_SUCC(ret)) {
+                ident_node->str_value_ = new_ident_str;
+                ident_node->str_len_ = strlen(new_ident_str);
+                if (OB_ISNULL(alias_node = new_non_terminal_node(parse_result.malloc_pool_, T_ALIAS, 2, 
+                                                                 function_project_node,
+                                                                 ident_node))) {
+                  ret = OB_PARSER_ERR_NO_MEMORY;
+                  LOG_WARN("No more space for parse malloc\n");
+                  break;
+                } else {
+                  alias_node->param_num_ = 0;
+                  // add a new ALIAS NODE
+                  select_clause_project_list->children_[idx]->children_[0] = alias_node; 
+                }
+              }
+            }
+            // 2. add more select columns
+            if (OB_SUCC(ret)) {
+              ObArray<uint64_t> new_project_string_nodes;
+              ParseNode* tmp = nullptr;
+              ParseNode* new_project_list_node = nullptr;
+              for (int i = 0; i < missing_groupby_col_pos.size(); ++i) {
+                int idx = missing_groupby_col_pos.at(i);
+                ParseNode* missing_groupby_col_ref = (ParseNode*)(groupby_columns.at(idx));
+                if (OB_FAIL(make_column_ref_node(tmp, missing_groupby_col_ref->children_[2]->str_value_, 
+                                                 missing_groupby_col_ref->children_[2]->str_len_,
+                                                 parse_result.malloc_pool_))) {
+                  break;
+                } else {
+                  new_project_string_nodes.push_back((uint64_t)tmp);
+                }
+              }
+              if (OB_FAIL(ret)) {
+                /* do nothing */
+              } else if (OB_ISNULL(new_project_list_node = new_node(parse_result.malloc_pool_, T_PROJECT_LIST, 
+                                                                    select_clause_project_list->num_child_ + 
+                                                                    new_project_string_nodes.size()))) {
+                ret = OB_PARSER_ERR_NO_MEMORY;
+                LOG_WARN("No more space for parse malloc\n");
+              } else {
+                for (int i = 0; i < select_clause_project_list->num_child_; ++i) {
+                  new_project_list_node->children_[i] = select_clause_project_list->children_[i];
+                }
+                for (int i = 0; i < new_project_string_nodes.size(); ++i) {
+                  new_project_list_node->children_[select_clause_project_list->num_child_ + i] =
+                    (ParseNode*)(new_project_string_nodes.at(i));
+                }
+                select_clause_node->children_[PARSE_SELECT_SELECT] = new_project_list_node;
+                select_clause_project_list = new_project_list_node;
+              }
+            }
+            // 3. add primary keys
+            ParseNode* primary_keys = nullptr;
+            if (OB_SUCC(ret)) {
+              ParseNode* tmp = nullptr;
+              int64_t key_num = groupby_columns.size();
+              if (OB_ISNULL(tmp = new_node(parse_result.malloc_pool_, T_COLUMN_LIST, key_num))) {
+                ret = OB_PARSER_ERR_NO_MEMORY;
+                LOG_WARN("No more space for parse malloc\n");
+              } else {
+                for (int i = 0; i < groupby_columns.size(); ++i) {
+                  ParseNode* col_ref = (ParseNode*)(groupby_columns.at(i));
+                  if (OB_ISNULL(tmp->children_[i] = new_terminal_node(parse_result.malloc_pool_, T_IDENT))) {
+                    ret = OB_PARSER_ERR_NO_MEMORY;
+                    LOG_WARN("No more space for parse malloc\n");
+                    break;
+                  }
+                  if (OB_ISNULL(tmp->children_[i]->str_value_ = parse_strndup(col_ref->children_[2]->str_value_,
+                                                                              col_ref->children_[2]->str_len_,
+                                                                              parse_result.malloc_pool_))) {
+                    ret = OB_PARSER_ERR_NO_MEMORY;
+                    LOG_WARN("No more space for parse malloc\n");
+                    break;
+                  }
+                  tmp->children_[i]->str_len_ = col_ref->children_[2]->str_len_;
+                }
+                if (OB_SUCC(ret)) {
+                  if (OB_ISNULL(tmp = new_non_terminal_node(parse_result.malloc_pool_, T_PRIMARY_KEY, 3, tmp, NULL, NULL))) {
+                    ret = OB_PARSER_ERR_NO_MEMORY;
+                    LOG_WARN("No more space for parse malloc\n");
+                  } else if (OB_ISNULL(primary_keys = new_non_terminal_node(parse_result.malloc_pool_, T_TABLE_ELEMENT_LIST, 1, tmp))) {
+                    ret = OB_PARSER_ERR_NO_MEMORY;
+                    LOG_WARN("No more space for parse malloc\n");
+                  }
+                }
+              }
+            }
+            // 4. change to CREATE TABLE
+            if (OB_SUCC(ret)) {
+              ParseNode* create_table_node = nullptr;
+              if (OB_ISNULL(create_table_node = new_non_terminal_node(parse_result.malloc_pool_, T_CREATE_TABLE, 8,
+                                                                      NULL, 
+                                                                      NULL,
+                                                                      stmt_node->children_[0],
+                                                                      primary_keys,
+                                                                      NULL,
+                                                                      NULL,
+                                                                      NULL,
+                                                                      stmt_node->children_[1]))) {
+                ret = OB_PARSER_ERR_NO_MEMORY;
+                LOG_WARN("No more space for parse malloc\n");
+              } else {
+                parse_result.result_tree_->children_[0] = create_table_node;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   generate_sql_id(pc_ctx, add_plan_to_pc, ret);
   if (OB_FAIL(ret)) {
     // do nothing

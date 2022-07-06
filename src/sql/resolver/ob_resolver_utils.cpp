@@ -345,6 +345,7 @@ stmt::StmtType ObResolverUtils::get_stmt_type_by_item_type(const ObItemType item
     SET_STMT_TYPE(T_CREATE_VIEW);
     SET_STMT_TYPE(T_ALTER_VIEW);
     SET_STMT_TYPE(T_DROP_VIEW);
+    SET_STMT_TYPE(T_CREATE_MATERIALIZED_VIEW);
     // index
     SET_STMT_TYPE(T_CREATE_INDEX);
     SET_STMT_TYPE(T_DROP_INDEX);

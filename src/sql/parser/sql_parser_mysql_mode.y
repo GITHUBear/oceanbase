@@ -6316,8 +6316,10 @@ select_stmt
 create_materialized_view_stmt:
 CREATE MATERIALIZED VIEW view_name AS select_stmt
 {
-  $4;
-  $$ = $6; /* Use select_stmt for MV temporarily */
+  // $4;
+  // $$ = $6; /* Use select_stmt for MV temporarily */
+  // TODO:
+  malloc_non_terminal_node($$, result->malloc_pool_, T_CREATE_MATERIALIZED_VIEW, 2, $4, $6);
 }
 ;
 

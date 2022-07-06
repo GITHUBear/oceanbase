@@ -301,6 +301,10 @@ private:
   int need_check_baseline(const ObPlanCacheCtx& pc_ctx, const ObPhysicalPlan& plan, bool& need_check);
   int need_add_plan(const ObPlanCacheCtx& ctx, ObResultSet& result, bool is_enable_pc, bool& need_add_plan);
 
+  int get_create_mv_parse_tree_groupby_columns(ParseNode* select_clause_groupby_node, ObArray<uint64_t>& column_refs);
+  char* get_alias_fun_project_node_name(ObItemType type, ParseNode* function_project_node, void* malloc_pool);
+  int make_column_ref_node(ParseNode*& new_node, const char* col_name, int64_t col_len, void* malloc_pool);
+
   template <typename ProcessorT>
   int handle_remote_batch_req(const ObReqTimestamp& req_ts, const char* buf, int32_t size);
 
