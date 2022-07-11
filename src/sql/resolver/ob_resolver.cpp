@@ -105,6 +105,7 @@
 #include "sql/resolver/cmd/ob_create_restore_point_resolver.h"
 #include "sql/resolver/cmd/ob_drop_restore_point_resolver.h"
 #include "sql/resolver/dml/ob_multi_table_insert_resolver.h"
+#include "sql/resolver/ddl/ob_create_materialized_view_log_resolver.h"
 
 namespace oceanbase {
 using namespace common;
@@ -236,6 +237,10 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode& parse_tree, ObS
       }
       case T_CREATE_VIEW: {
         REGISTER_STMT_RESOLVER(CreateView);
+        break;
+      }
+      case T_CREATE_MATERIALIZED_VIEW_LOG: {
+        REGISTER_STMT_RESOLVER(CreateMaterializedViewLog);
         break;
       }
       case T_ALTER_VIEW: {

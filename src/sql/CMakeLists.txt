@@ -931,6 +931,7 @@ ob_set_subtarget(ob_sql resolver
   resolver/cmd/ob_create_restore_point_resolver.cpp
   resolver/cmd/ob_drop_restore_point_resolver.cpp
   resolver/ddl/ob_create_view_resolver.cpp
+  resolver/ddl/ob_create_materialized_view_log_resolver.cpp
   resolver/ddl/ob_ddl_resolver.cpp
   resolver/ddl/ob_ddl_stmt.cpp
   resolver/ddl/ob_drop_database_resolver.cpp

@@ -1766,6 +1766,7 @@ typedef enum ObItemType
   T_TABLE_TTL,
 
   T_CREATE_MATERIALIZED_VIEW,
+  T_CREATE_MATERIALIZED_VIEW_LOG,
   T_MAX  // Attention: add a new type before T_MAX
 } ObItemType;
 

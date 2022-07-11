@@ -90,8 +90,8 @@ public:
   int check_table_exists(const uint64_t tenant_id, const common::ObString& database_name,
       const common::ObString& table_name, const bool is_index_table, bool& is_exist);
 
-  int get_table_id(const uint64_t tenant_id, const uint64_t database_id, const common::ObString& table_name,
-      const bool is_index_table, uint64_t& table_id);
+  // int get_table_id(const uint64_t tenant_id, const uint64_t database_id, const common::ObString& table_name,
+  //    const bool is_index_table, uint64_t& table_id);
   // int get_database_name(const uint64_t tenant_id,
   //                      const uint64_t database_id,
   //                      common::ObString &database_name) const;

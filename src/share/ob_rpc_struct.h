@@ -1014,6 +1014,8 @@ public:
   bool is_inner_;
   share::schema::ObErrorInfo error_info_;
   // New members of ObCreateTableArg need to pay attention to the implementation of is_allow_when_upgrade
+  // mv_base_table_id_ for create materialized view.
+  uint64_t mv_base_table_id_;
 };
 
 struct ObCreateTableLikeArg : public ObDDLArg {
