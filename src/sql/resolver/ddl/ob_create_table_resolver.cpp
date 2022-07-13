@@ -452,6 +452,67 @@ int ObCreateTableResolver::resolve(const ParseNode& parse_tree)
       create_table_stmt->set_allocator(*allocator_);
       stmt_ = create_table_stmt;
     }
+
+    if (!OB_ISNULL(params_.mv_log_table_name_ptr_)) {
+      // check for materialized view
+      ObSchemaChecker* schema_checker = params_.schema_checker_;
+      const uint64_t tenant_id = session_info_->get_effective_tenant_id();
+      ObString mv_log_table_name;
+      mv_log_table_name.assign_ptr(params_.mv_log_table_name_ptr_, params_.mv_log_table_name_len_);
+      ObString database_name = session_info_->get_database_name();
+      bool is_exist = false;
+      uint64_t mv_log_table_id = 0;
+      if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_name, mv_log_table_name, false, is_exist))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("failed to check table exists", K(ret));
+      } else if (!is_exist) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("materialized view create without mv log is not supported", K(ret));
+      } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_name, mv_log_table_name, 
+                                                                          false, ObSchemaGetterGuard::ALL_TYPES, mv_log_table_id))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("failed to get table id", K(ret));
+      } else {
+        ObCreateTableArg& create_arg = create_table_stmt->get_create_table_arg();
+        create_arg.mv_log_table_id_ = mv_log_table_id;
+        LOG_INFO("create materialized view with mv log", K(mv_log_table_id));
+      }
+#ifndef NDEBUG
+      // Only for Debug: check if materialized view table_schema.mv_log_table_id persisted.
+      ParseNode* relation_factor_node = create_table_node->children_[2];
+      ObString mv_table_name;
+      bool mv_table_exist = false;
+      if (OB_ISNULL(relation_factor_node)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
+      } else {
+        mv_table_name.assign_ptr(relation_factor_node->str_value_, relation_factor_node->str_len_);
+      }
+      if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_name, mv_table_name, false, mv_table_exist))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("failed to check table exists", K(ret));
+      } else if (mv_table_exist) {
+        // get table_schema
+      //   int get_table_schema(const uint64_t tenant_id, const common::ObString& database_name,
+      // const common::ObString& table_name, const bool is_index_table, const share::schema::ObTableSchema*& table_schema);
+        const ObTableSchema* mv_table_schema = nullptr;
+        uint64_t mv_log_table_id = 0;
+        uint64_t cur_seq_no = 0;
+        if (OB_FAIL(schema_checker->get_table_schema(tenant_id, database_name, mv_table_name, false, mv_table_schema))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("failed to get mv table schema", K(ret));
+        } else if (OB_ISNULL(mv_table_schema)) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("get unexpected null", K(ret));
+        } else {
+          mv_log_table_id = mv_table_schema->get_mv_log_table_id();
+          cur_seq_no = mv_table_schema->get_cur_applied_seq_no();
+          LOG_DEBUG("get existed mv table schema", K(mv_log_table_id), K(cur_seq_no));
+        }
+      }
+#endif
+    }
+
     // resolve temporary option
     if (OB_SUCC(ret)) {
       if (NULL != create_table_node->children_[0]) {

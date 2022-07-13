@@ -1710,6 +1710,8 @@ int ObTableSchema::assign(const ObTableSchema& src_schema)
       progressive_merge_round_ = src_schema.progressive_merge_round_;
       storage_format_version_ = src_schema.storage_format_version_;
       table_dop_ = src_schema.table_dop_;
+      mv_log_table_id_ = src_schema.mv_log_table_id_;
+      cur_applied_seq_no_ = src_schema.cur_applied_seq_no_;
       if (OB_FAIL(deep_copy_str(src_schema.tablegroup_name_, tablegroup_name_))) {
         LOG_WARN("Fail to deep copy tablegroup_name", K(ret));
       } else if (OB_FAIL(deep_copy_str(src_schema.comment_, comment_))) {
@@ -3044,6 +3046,9 @@ void ObTableSchema::reset()
   foreign_key_infos_.reset();
   simple_index_infos_.reset();
   table_dop_ = 1;
+
+  mv_log_table_id_ = 0;
+  cur_applied_seq_no_ = 0;
   ObSimpleTableSchemaV2::reset();
 }
 
@@ -4303,7 +4308,9 @@ int64_t ObTableSchema::to_string(char* buf, const int64_t buf_len) const
       K_(column_cnt),
       K_(table_dop),
       "column_array",
-      ObArrayWrap<ObColumnSchemaV2*>(column_array_, column_cnt_));
+      ObArrayWrap<ObColumnSchemaV2*>(column_array_, column_cnt_),
+      K_(mv_log_table_id),
+      K_(cur_applied_seq_no));
   J_OBJ_END();
 
   return pos;
@@ -4424,7 +4431,9 @@ OB_DEF_SERIALIZE(ObTableSchema)
       primary_zone_,
       index_using_type_,
       progressive_merge_round_,
-      storage_format_version_);
+      storage_format_version_,
+      mv_log_table_id_,
+      cur_applied_seq_no_);
 
   if (!OB_SUCC(ret)) {
     LOG_WARN("Fail to serialize fixed length data", K(ret));
@@ -4681,7 +4690,9 @@ OB_DEF_DESERIALIZE(ObTableSchema)
       primary_zone,
       index_using_type_,
       progressive_merge_round_,
-      storage_format_version_);
+      storage_format_version_,
+      mv_log_table_id_,
+      cur_applied_seq_no_);
 
   if (OB_FAIL(ret)) {
     LOG_WARN("Fail to deserialize fixed length data", K(ret));
@@ -4945,7 +4956,9 @@ OB_DEF_SERIALIZE_SIZE(ObTableSchema)
       tablespace_id_,
       encrypt_key_,
       master_key_id_,
-      drop_schema_version_);
+      drop_schema_version_,
+      mv_log_table_id_,
+      cur_applied_seq_no_);
 
   len += table_mode_.get_serialize_size();
   len += get_string_array_serialize_size(zone_list_);
@@ -6267,7 +6280,9 @@ int64_t ObPrintableTableSchema::to_string(char* buf, const int64_t buf_len) cons
       K_(read_only),
       "mv_tid_array",
       ObArrayWrap<uint64_t>(mv_tid_array_, mv_cnt_),
-      K_(base_table_ids));
+      K_(base_table_ids),
+      K_(mv_log_table_id),
+      K_(cur_applied_seq_no));
   J_OBJ_END();
   return pos;
 }

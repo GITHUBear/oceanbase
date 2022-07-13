@@ -1357,6 +1357,8 @@ int ObSql::generate_stmt(ParseResult &parse_result, ObPlanCacheCtx *pc_ctx, ObSq
     resolver_ctx.cur_sql_ = context.cur_sql_;
     resolver_ctx.is_restore_ = context.is_restore_;
     resolver_ctx.is_ddl_from_primary_ = context.is_ddl_from_primary_;
+    resolver_ctx.mv_log_table_name_ptr_ = context.mv_log_table_name_ptr_;
+    resolver_ctx.mv_log_table_name_len_ = context.mv_log_table_name_len_;
     if (NULL != pc_ctx) {
       resolver_ctx.select_item_param_infos_ = &pc_ctx->select_item_param_infos_;
     }
@@ -3262,6 +3264,42 @@ int ObSql::make_column_ref_node(ParseNode*& new_node, const char* col_name, int6
   return ret;
 }
 
+
+int ObSql::get_mv_log_table_name(ParseNode*& org_node, char*& mv_log_name_ptr, uint64_t& mv_log_name_len, void* malloc_pool) {
+  int ret = OB_SUCCESS;
+  ParseNode* relation_factor_node = nullptr;
+  ParseNode* ident_node = nullptr;
+  if (OB_ISNULL(org_node)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
+  } else if (org_node->num_child_ != 4) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected children number", K(ret));
+  } else if (!(OB_ISNULL(org_node->children_[1]) && 
+               OB_ISNULL(org_node->children_[2]) &&
+               OB_ISNULL(org_node->children_[3]) &&
+               !OB_ISNULL(relation_factor_node = org_node->children_[0]))) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_WARN("complex from clause is not supported", K(ret));
+  } else if (!(OB_ISNULL(relation_factor_node->children_[0]) &&
+               !OB_ISNULL(relation_factor_node->children_[1]))) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_WARN("complex relation factor node is not supported", K(ret));
+  } else {
+    ident_node = relation_factor_node->children_[1];
+    if (OB_ISNULL(mv_log_name_ptr = static_cast<char*>(parse_malloc(ident_node->str_len_ + 7, malloc_pool)))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_ERROR("Failed to malloc new table name string", K(ret));
+    } else {
+      memmove(mv_log_name_ptr, ident_node->str_value_, ident_node->str_len_);
+      memmove(mv_log_name_ptr + ident_node->str_len_, "_mvlog", 6);
+      mv_log_name_ptr[ident_node->str_len_ + 6] = '\0';
+      mv_log_name_len = ident_node->str_len_ + 6;
+    }
+  }
+  return ret;
+}
+
 int ObSql::handle_physical_plan(
     const ObString &trimed_stmt, ObSqlCtx &context, ObResultSet &result, ObPlanCacheCtx &pc_ctx, const int get_plan_err)
 {
@@ -3329,7 +3367,20 @@ int ObSql::handle_physical_plan(
       ParseNode* select_clause_node = stmt_node->children_[1];
       ParseNode* select_clause_project_list = select_clause_node->children_[PARSE_SELECT_SELECT];
       ParseNode* select_clause_groupby_node = select_clause_node->children_[PARSE_SELECT_GROUP];
-      if (OB_ISNULL(select_clause_node)) {
+      ParseNode* select_from_list = select_clause_node->children_[PARSE_SELECT_FROM];
+      ObString mv_log_name;
+      uint64_t mv_log_table_id = 0;
+      if (OB_ISNULL(select_from_list)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
+      } else if (select_from_list->num_child_ != 1) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("multi table join is not support", K(ret));
+      } else if (get_mv_log_table_name(select_from_list->children_[0], context.mv_log_table_name_ptr_, 
+                                       context.mv_log_table_name_len_, parse_result.malloc_pool_)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("fail to get mv log table name", K(ret));
+      } else if (OB_ISNULL(select_clause_node)) {
         ret = OB_ERR_UNEXPECTED;
         LOG_WARN("get unexpected null", K(ret));
       } else if (OB_ISNULL(select_clause_project_list)) {

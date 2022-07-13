@@ -394,6 +394,10 @@ public:
   bool is_sensitive_;     // Whether it contains sensitive information.
                           // If so, it will not be recorded in sql audit.
   common::ObFixedArray<int64_t, common::ObIAllocator> multi_stmt_rowkey_pos_;
+  // Only for create materialized view 
+  // uint64_t mv_log_table_id_;
+  char* mv_log_table_name_ptr_;
+  uint64_t mv_log_table_name_len_;
 };
 
 struct ObQueryCtx {

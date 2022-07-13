@@ -465,7 +465,9 @@ all_table_v2_def = dict(
       ('character_set_client', 'int', 'false', '0'),
       ('collation_connection', 'int', 'false', '0'),
       ('auto_part_size', 'int', 'false', '-1'),
-      ('auto_part', 'bool', 'false', 'false')
+      ('auto_part', 'bool', 'false', 'false'),
+      ('mv_log_table_id', 'bigint', 'true', '0'),
+      ('cur_applied_seq_no', 'bigint', 'true', '0') 
     ],
     columns_with_tenant_id = ['table_id', 'database_id', 'data_table_id', 'tablegroup_id', 'tablespace_id'],
 )

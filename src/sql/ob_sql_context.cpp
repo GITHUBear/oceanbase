@@ -244,7 +244,10 @@ ObSqlCtx::ObSqlCtx()
       cur_stmt_(NULL),
       can_reroute_sql_(false),
       reroute_info_(),
-      is_sensitive_(false)
+      is_sensitive_(false),
+      // mv_log_table_id_(0),
+      mv_log_table_name_ptr_(nullptr),
+      mv_log_table_name_len_(0)
 {
   sql_id_[0] = '\0';
   sql_id_[common::OB_MAX_SQL_ID_LENGTH] = '\0';

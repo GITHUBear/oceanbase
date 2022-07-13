@@ -806,7 +806,7 @@ DEF_TO_STRING(ObCreateTableArg)
 }
 
 OB_SERIALIZE_MEMBER((ObCreateTableArg, ObDDLArg), if_not_exist_, schema_, index_arg_list_, db_name_, create_mode_,
-    foreign_key_arg_list_, constraint_list_, last_replay_log_id_, is_inner_, error_info_);
+    foreign_key_arg_list_, constraint_list_, last_replay_log_id_, is_inner_, error_info_, mv_log_table_id_);
 
 bool ObCreateTableArg::is_allow_when_upgrade() const
 {

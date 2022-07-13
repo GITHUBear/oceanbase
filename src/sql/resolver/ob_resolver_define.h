@@ -289,7 +289,10 @@ struct ObResolverParams {
         is_resolve_table_function_expr_(false),
         has_cte_param_list_(false),
         has_recursive_word_(false),
-        is_column_ref_(true)
+        is_column_ref_(true),
+        // mv_log_table_id_(0),
+        mv_log_table_name_ptr_(nullptr),
+        mv_log_table_name_len_(0)
   {}
   bool is_force_trace_log()
   {
@@ -344,7 +347,11 @@ public:
   bool is_resolve_table_function_expr_;  // used to mark resolve table function expr.
   bool has_cte_param_list_;
   bool has_recursive_word_;
-  bool is_column_ref_;                   // used to mark normal column ref
+  bool is_column_ref_;  
+  // Only for ObCreateTableResolver & create materialized view mode
+  // uint64_t mv_log_table_id_;             // used to mark normal column ref
+  char* mv_log_table_name_ptr_;
+  uint64_t mv_log_table_name_len_;
 };
 }  // end namespace sql
 }  // end namespace oceanbase
