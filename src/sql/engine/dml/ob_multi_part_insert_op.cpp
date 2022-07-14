@@ -103,18 +103,23 @@ int ObMultiPartInsertOp::shuffle_insert_row(bool& got_row)
     ObTableModifySpec* sub_insert = global_index_infos.at(0).se_subplans_.at(INSERT_OP).subplan_root_;
     CK(OB_NOT_NULL(sub_insert));
     const ObExprPtrIArray* output = NULL;
+    // 从子算子中获取新row
     while (OB_SUCC(ret) && OB_SUCC(prepare_next_storage_row(output))) {
       got_row = true;
       ++affected_rows;
+      // nullable检查
       OZ(check_row_null(*output, sub_insert->column_infos_));
       if (MY_SPEC.is_returning_) {
         OZ(returning_datum_store_.add_row(MY_SPEC.output_, &eval_ctx_));
       }
+      // 外键检查
       OZ(ForeignKeyHandle::do_handle_new_row(*this, sub_insert->fk_args_, *output));
       OZ(filter_row_for_check_cst(MY_SPEC.check_constraint_exprs_, is_filtered));
       OV(!is_filtered, OB_ERR_CHECK_CONSTRAINT_VIOLATED);
+      // 对于每一个全局索引，0表示数据表
       for (int64_t i = 0; OB_SUCC(ret) && i < global_index_infos.count(); ++i) {
         ObDatum* partition_id_datum = NULL;
+        // 第i个索引的INSERT OP的partion expr
         const ObExpr* calc_part_id_expr = global_index_infos.at(i).calc_part_id_exprs_.at(0);
         const SeDMLSubPlan& dml_subplan = global_index_infos.at(i).se_subplans_.at(0);
         ObIArray<int64_t>& part_ids = global_index_ctxs.at(i).partition_ids_;

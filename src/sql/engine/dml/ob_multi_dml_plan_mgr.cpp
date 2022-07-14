@@ -244,6 +244,7 @@ int ObMultiDMLPlanMgr::build_multi_part_dml_task()
           }
           CK(OB_NOT_NULL(server_op));
         }
+        // 第k个表的第i个索引的第j个分区
         const PartSubPlanArray& part_subplan_array = table_subplan_array_.at(k).at(i).at(j);
         for (int64_t idx = 0; OB_SUCC(ret) && idx < part_subplan_array.count(); ++idx) {
           if (part_subplan_array.at(idx).row_store_ != NULL || part_subplan_array.at(idx).datum_store_ != NULL) {

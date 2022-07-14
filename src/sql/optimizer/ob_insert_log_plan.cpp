@@ -34,6 +34,9 @@ int ObInsertLogPlan::generate_plan()
 {
   int ret = OB_SUCCESS;
   ObInsertStmt* insert_stmt = static_cast<ObInsertStmt*>(get_stmt());
+  if (insert_stmt->get_mv_log_table_id() > 0) {
+    LOG_INFO("generate_plan InsertLogPlan with mv_log");
+  }
   if (OB_ISNULL(insert_stmt)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("insert stmt is null", K(ret));

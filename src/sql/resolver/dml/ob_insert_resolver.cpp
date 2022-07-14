@@ -213,6 +213,61 @@ int ObInsertResolver::resolve_single_table_insert(const ParseNode& node)
   OZ(resolve_insert_field(*insert_into));
   OZ(resolve_values(*values_node));
 
+  if (OB_SUCC(ret)) {
+    // for materialized view
+    ObSchemaChecker* schema_checker = params_.schema_checker_;
+    const uint64_t tenant_id = session_info_->get_effective_tenant_id();
+    ObString database_name = session_info_->get_database_name();
+    ObString mvlog_table_name, base_table_name;
+    uint64_t mvlog_table_id;
+    bool is_exist = false, base_is_exist = false;
+    const ParseNode* org_node = insert_into->children_[0];
+    const ParseNode* relation_factor_node = NULL;
+    CK(OB_NOT_NULL(org_node));
+    CK(OB_NOT_NULL(relation_factor_node = org_node->children_[0]));
+    char* mv_log_str = nullptr;
+    mv_log_str = static_cast<char*>(params_.allocator_->alloc(relation_factor_node->str_len_ + 7));
+    memmove(mv_log_str, relation_factor_node->str_value_, relation_factor_node->str_len_);
+    memmove(mv_log_str + relation_factor_node->str_len_, "_mvlog", 6);
+    mv_log_str[relation_factor_node->str_len_ + 7] = '\0';
+    mvlog_table_name.assign_ptr(mv_log_str, relation_factor_node->str_len_ + 6);
+    base_table_name.assign_ptr(relation_factor_node->str_value_, relation_factor_node->str_len_);
+    if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_name, mvlog_table_name, false, is_exist))) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("failed to check table exists", K(ret));
+    } else if (is_exist) {
+      if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_name, mvlog_table_name,
+                                                                   false, ObSchemaGetterGuard::ALL_TYPES, mvlog_table_id))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("failed to get table id", K(ret));
+      } else {
+        insert_stmt->set_mv_log_table_id(mvlog_table_id);
+        if (schema_checker->check_table_exists(tenant_id, database_name, base_table_name, false, base_is_exist)) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("failed to get mv table schema", K(ret));
+        } else if (base_is_exist) {
+          const ObTableSchema* base_table_schema = nullptr;
+          if (OB_FAIL(schema_checker->get_table_schema(tenant_id, database_name, base_table_name, false, base_table_schema))) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("failed to get table schema", K(ret));
+          } else if (OB_ISNULL(base_table_schema)) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("get unexpected null", K(ret));
+          }
+          const ObColumnSchemaV2* col_schema = nullptr;
+          for (int64_t i = 0; i < base_table_schema->get_column_count(); ++i) {
+            col_schema = base_table_schema->get_column_schema_by_idx(i);
+            if (col_schema->is_rowkey_column()) {
+              insert_stmt->set_base_table_pk_column_id(col_schema->get_column_id());
+              // multi pk is avoided when create mvlog
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
   if (OB_SUCC(ret) && !insert_stmt->get_table_items().empty() && NULL != insert_stmt->get_table_item(0) &&
       insert_stmt->get_table_item(0)->is_generated_table()) {
     OZ(add_all_column_to_updatable_view(*insert_stmt, *insert_stmt->get_table_item(0)));

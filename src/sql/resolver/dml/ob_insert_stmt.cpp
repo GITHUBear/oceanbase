@@ -328,7 +328,9 @@ int64_t ObInsertStmt::to_string(char* buf, const int64_t buf_len) const
         "part_generated_col_dep_cols",
         part_generated_col_dep_cols_,
         N_CHILD_STMT,
-        child_stmts);
+        child_stmts,
+        K(mv_log_table_id_),
+        K(base_table_pk_column_id_));
     if (insert_up_) {
       J_COMMA();
       J_KV(N_ASSIGN, table_assignments_);
