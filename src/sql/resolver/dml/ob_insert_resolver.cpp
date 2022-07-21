@@ -211,6 +211,63 @@ int ObInsertResolver::resolve_single_table_insert(const ParseNode& node)
   CK(OB_NOT_NULL(values_node = node.children_[1]));
   CK(OB_NOT_NULL(params_.session_info_));
   OZ(resolve_insert_field(*insert_into));
+
+  if (OB_SUCC(ret)) {
+    ObSchemaChecker* schema_checker = params_.schema_checker_;
+    if (OB_NOT_NULL(schema_checker) && OB_NOT_NULL(session_info_)) {
+      const uint64_t tenant_id = session_info_->get_effective_tenant_id();
+      ObString database_name = session_info_->get_database_name();
+      ObString mvlog_table_name, base_table_name;
+      uint64_t mvlog_table_id;
+      bool is_exist = false, base_is_exist = false;
+      const ParseNode* org_node = insert_into->children_[0];
+      const ParseNode* relation_factor_node = NULL;
+      if (OB_NOT_NULL(org_node) && OB_NOT_NULL(relation_factor_node = org_node->children_[0])) {
+        char* mv_log_str = nullptr;
+        base_table_name.assign_ptr(relation_factor_node->str_value_, relation_factor_node->str_len_);
+        mv_log_str = static_cast<char*>(params_.allocator_->alloc(relation_factor_node->str_len_ + 7));
+        memmove(mv_log_str, relation_factor_node->str_value_, relation_factor_node->str_len_);
+        memmove(mv_log_str + relation_factor_node->str_len_, "_mvlog", 6);
+        mv_log_str[relation_factor_node->str_len_ + 6] = '\0';
+        mvlog_table_name.assign_ptr(mv_log_str, relation_factor_node->str_len_ + 6);
+        if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_name, mvlog_table_name, false, is_exist))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("failed to check table exists", K(ret));
+        } else if (is_exist) {
+          if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_name, mvlog_table_name,
+                                                                      false, ObSchemaGetterGuard::ALL_TYPES, mvlog_table_id))) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("failed to get table id", K(ret));
+          } else {
+            insert_stmt->set_mv_log_table_id(mvlog_table_id);
+            if (schema_checker->check_table_exists(tenant_id, database_name, base_table_name, false, base_is_exist)) {
+              ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("failed to get mv table schema", K(ret));
+            } else if (base_is_exist) {
+              const ObTableSchema* base_table_schema = nullptr;
+              if (OB_FAIL(schema_checker->get_table_schema(tenant_id, database_name, base_table_name, false, base_table_schema))) {
+                ret = OB_ERR_UNEXPECTED;
+                LOG_WARN("failed to get table schema", K(ret));
+              } else if (OB_ISNULL(base_table_schema)) {
+                ret = OB_ERR_UNEXPECTED;
+                LOG_WARN("get unexpected null", K(ret));
+              }
+              const ObColumnSchemaV2* col_schema = nullptr;
+              for (int64_t i = 0; i < base_table_schema->get_column_count(); ++i) {
+                col_schema = base_table_schema->get_column_schema_by_idx(i);
+                if (col_schema->is_rowkey_column()) {
+                  insert_stmt->set_base_table_pk_column_id(col_schema->get_column_id());
+                  // multi pk is avoided when create mvlog
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   OZ(resolve_values(*values_node));
 
   if (OB_SUCC(ret) && !insert_stmt->get_table_items().empty() && NULL != insert_stmt->get_table_item(0) &&
@@ -223,6 +280,9 @@ int ObInsertResolver::resolve_single_table_insert(const ParseNode& node)
   OZ(set_table_columns());
   OZ(check_has_unique_index());
   OZ(save_autoinc_params());
+  if (insert_stmt->get_mv_log_table_id() != 0) {
+    OZ(save_mvlog_autoinc_params(insert_stmt->get_mv_log_table_id()));
+  }
 
   OZ(add_column_conv_function());
   // In static engine we need to replace the dependent column of generate column with the
@@ -356,6 +416,49 @@ int ObInsertResolver::resolve_multi_table_dml_info(uint64_t table_offset /*defau
         table_version.object_id_ = index_schema->get_table_id();
         table_version.object_type_ = DEPENDENCY_TABLE;
         table_version.version_ = index_schema->get_schema_version();
+        if (OB_FAIL(insert_stmt->add_global_dependency_table(table_version))) {
+          LOG_WARN("add global dependency table failed", K(ret));
+        }
+      }
+    }
+
+    uint64_t mvlog_table_id = 0;
+    if ((mvlog_table_id = insert_stmt->get_mv_log_table_id()) != 0 && !table_offset) {
+      // mvlog table exists
+      // insert_stmt->set_has_global_index(true);   // is needed?
+      const ObTableSchema* mvlog_schema = NULL;
+      IndexDMLInfo index_dml_info;
+      if (OB_FAIL(schema_checker_->get_table_schema(mvlog_table_id, mvlog_schema))) {
+        LOG_WARN("get mvlog table schema failed", K(ret), K(mvlog_table_id));
+      } else if (OB_ISNULL(mvlog_schema)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("mvlog schema is null", K(mvlog_table_id));
+      } else if (OB_ISNULL(insert_stmt->get_table_item(0))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get table item failed", K(ret));
+      } else if (OB_FAIL(resolve_mvlog_all_column_exprs(
+                      insert_stmt->get_insert_table_id(0), 
+                      mvlog_schema->get_table_name_str(),
+                      insert_stmt->get_table_item(0)->database_name_,
+                      *mvlog_schema,
+                      index_dml_info.column_exprs_))) {
+        LOG_WARN("resolve mvlog column exprs failed", K(ret));
+      } else {
+        index_dml_info.table_id_ = insert_stmt->get_insert_table_id(0);
+        index_dml_info.loc_table_id_ = insert_stmt->get_table_items().at(0)->get_base_table_item().table_id_;
+        index_dml_info.index_tid_ = mvlog_schema->get_table_id();
+        index_dml_info.rowkey_cnt_ = mvlog_schema->get_rowkey_column_num();
+        index_dml_info.part_cnt_ = mvlog_schema->get_partition_cnt();
+        index_dml_info.index_type_ = mvlog_schema->get_index_type();
+        const ObString& mvlog_name = mvlog_schema->get_table_name_str();
+        index_dml_info.index_name_.assign_ptr(mvlog_name.ptr(), mvlog_name.length());
+        if (OB_FAIL(insert_stmt->add_multi_table_dml_info(index_dml_info))) {
+          LOG_WARN("add index dml info to stmt failed", K(ret), K(index_dml_info));
+        }
+        ObSchemaObjVersion table_version;
+        table_version.object_id_ = mvlog_schema->get_table_id();
+        table_version.object_type_ = DEPENDENCY_TABLE;
+        table_version.version_ = mvlog_schema->get_schema_version();
         if (OB_FAIL(insert_stmt->add_global_dependency_table(table_version))) {
           LOG_WARN("add global dependency table failed", K(ret));
         }
@@ -1828,6 +1931,47 @@ int ObInsertResolver::add_value_row(ObIArray<ObRawExpr*>& value_row)
   for (; OB_SUCC(ret) && i < value_row.count(); ++i) {
     if (OB_FAIL(insert_stmt->get_value_vectors().push_back(value_row.at(i)))) {
       LOG_WARN("push back expr failed", K(ret));
+    }
+  }
+  return ret;
+}
+
+int ObInsertResolver::save_mvlog_autoinc_params(uint64_t mvlog_table_id)
+{
+  int ret = OB_SUCCESS;
+  ObInsertStmt* insert_stmt = get_insert_stmt();
+  const ObTableSchema* table_schema = NULL;
+  if (OB_FAIL(schema_checker_->get_table_schema(mvlog_table_id, table_schema))) {
+    LOG_WARN("fail to get table schema", K(ret), "table_id", mvlog_table_id);
+  } else if (OB_ISNULL(table_schema)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_ERROR("fail to get table schema", K(ret), K(table_schema));
+  } else {
+    const ObColumnSchemaV2* pk_col = table_schema->get_column_schema(OB_HIDDEN_PK_INCREMENT_COLUMN_ID);
+    if (OB_ISNULL(pk_col) || !(pk_col->is_autoincrement())) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_ERROR("mvlog without hidden pk increment col id", K(pk_col));
+    } else {
+      uint64_t col_id = pk_col->get_column_id();
+      AutoincParam param;
+      param.tenant_id_ = params_.session_info_->get_effective_tenant_id();
+      param.autoinc_table_id_ = mvlog_table_id;
+      param.autoinc_first_part_num_ = table_schema->get_first_part_num();
+      param.autoinc_table_part_num_ = table_schema->get_all_part_num();
+      param.autoinc_col_id_ = col_id;          // Note: mvlog autoinc_col_id_ may be the same as base table autoinc_col_id_
+      param.part_level_ = table_schema->get_part_level();
+      ObObjType column_type = table_schema->get_column_schema(col_id)->get_data_type();
+      param.autoinc_col_type_ = column_type;
+      param.autoinc_desired_count_ = 0;
+      param.autoinc_increment_ = 1;
+      param.autoinc_offset_ = 1;
+      param.part_value_no_order_ = true;
+      param.autoinc_col_index_ = 0;
+      param.total_value_count_ = 1;
+      param.is_mvlog_ = true;
+      if (OB_FAIL(insert_stmt->get_autoinc_params().push_back(param))) {
+        LOG_WARN("failed to push autoinc_param", K(param), K(ret));
+      }
     }
   }
   return ret;

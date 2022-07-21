@@ -8905,6 +8905,86 @@ int ObDMLResolver::resolve_index_rowkey_exprs(uint64_t table_id, const ObTableSc
   return ret;
 }
 
+int ObDMLResolver::resolve_mvlog_all_column_exprs(uint64_t base_table_id, const ObString& table_name, const ObString& database_name, 
+        const share::schema::ObTableSchema& mvlog_schema, common::ObIArray<ObColumnRefRawExpr*>& column_exprs)
+{
+  int ret = OB_SUCCESS;
+  ObDMLStmt* dml_stmt = get_stmt();
+  if (OB_ISNULL(dml_stmt)) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid insert stmt", K(dml_stmt));
+  } else {
+    ObColumnRefRawExpr* col_expr = NULL;
+    ColumnItem* col_item = NULL;
+
+    ObTableSchema::const_column_iterator iter = mvlog_schema.column_begin();
+    ObTableSchema::const_column_iterator end = mvlog_schema.column_end();
+    for (; OB_SUCC(ret) && iter != end; ++iter) {
+      const ObColumnSchemaV2* column = *iter;
+      if (OB_ISNULL(column)) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("invalid column schema", K(column));
+      } else if (!column->is_rowkey_column()) {
+        // mvlog table use autoincrement rowkey: skip it
+        if (OB_ISNULL(col_item = find_col_by_base_col_id(*dml_stmt, base_table_id, column->get_column_id()))) {
+          if (strcmp(column->get_column_name(), "_primary_key") == 0) {
+            // _primary_key
+            ObDelUpdStmt* del_upd_stmt = NULL;
+            if (!dml_stmt->is_dml_write_stmt()) {
+              ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("resolve mvlog only supports for DelUpdStmt", K(ret));
+            } else {
+              del_upd_stmt = static_cast<ObDelUpdStmt*>(dml_stmt);
+              uint64_t base_pk_col_id = del_upd_stmt->get_base_table_pk_column_id();
+              if (OB_ISNULL(col_item = find_col_by_base_col_id(*dml_stmt, base_table_id, base_pk_col_id))) {
+                ret = OB_ERR_UNEXPECTED;
+                LOG_WARN("get column item by id failed", K(ret), K(base_table_id), K(base_pk_col_id));
+              } else if (OB_ISNULL(col_expr = col_item->expr_)) {
+                ret = OB_ERR_UNEXPECTED;
+                LOG_WARN("expr_ of column item is null", K(ret), K(*col_item));
+              } else if (OB_FAIL(column_exprs.push_back(col_expr))) {
+                LOG_WARN("store column expr to column exprs failed", K(ret));
+              }
+            }
+          } else {
+            // _dml_type
+            ObColumnRefRawExpr* col_expr = NULL;
+            if (OB_FAIL(ObRawExprUtils::build_column_expr(*params_.expr_factory_, *column, col_expr))) {
+              LOG_WARN("build column expr failed", K(ret));
+            } else {
+              col_expr->set_column_attr(table_name, column->get_column_name_str());
+              col_expr->set_database_name(database_name);
+              if (OB_FAIL(column_exprs.push_back(col_expr))) {
+                LOG_WARN("store column expr to column exprs failed", K(ret));
+              }
+            }
+          }
+        } else {
+          if (OB_ISNULL(col_expr = col_item->expr_)) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("expr_ of column item is null", K(ret), K(*col_item));
+          } else if (OB_FAIL(column_exprs.push_back(col_expr))) {
+            LOG_WARN("store column expr to column exprs failed", K(ret));
+          }
+        }
+      } else {
+        // pk_increment
+        ObColumnRefRawExpr* col_expr = NULL;
+        if (OB_FAIL(ObRawExprUtils::build_column_expr(*params_.expr_factory_, *column, col_expr))) {
+          LOG_WARN("build column expr failed", K(ret));
+        } else {
+          col_expr->set_column_attr(table_name, column->get_column_name_str());
+          col_expr->set_database_name(database_name);
+          if (OB_FAIL(column_exprs.push_back(col_expr))) {
+            LOG_WARN("store column expr to column exprs failed", K(ret));
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 int ObDMLResolver::resolve_index_all_column_exprs(
     uint64_t table_id, const ObTableSchema& index_schema, ObIArray<ObColumnRefRawExpr*>& column_exprs)
 {

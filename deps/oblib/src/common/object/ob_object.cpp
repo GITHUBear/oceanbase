@@ -1065,7 +1065,7 @@ bool ObObj::check_collation_integrity() const
     // ignore null
     // is_ok = (CS_TYPE_BINARY == get_collation_type() && CS_LEVEL_IGNORABLE == get_collation_level());
   } else if (ob_is_numeric_type(get_type()) || ob_is_temporal_type(get_type())) {
-    is_ok = (CS_TYPE_BINARY == get_collation_type() && CS_LEVEL_NUMERIC == get_collation_level());
+    is_ok = (CS_TYPE_BINARY == get_collation_type() && (CS_LEVEL_NUMERIC == get_collation_level() || CS_LEVEL_IMPLICIT == get_collation_level()));
   } else {
     // ignore: varchar, char, binary, varbinary, unknown, ext
   }

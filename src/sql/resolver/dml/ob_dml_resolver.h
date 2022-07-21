@@ -397,6 +397,9 @@ protected:
   {
     with_clause_without_record_ = record;
   };
+    int resolve_mvlog_all_column_exprs(uint64_t base_table_id, const ObString& table_name, const ObString& database_name,
+        const share::schema::ObTableSchema& mvlog_schema, common::ObIArray<ObColumnRefRawExpr*>& column_exprs);
+
   int resolve_index_rowkey_exprs(uint64_t table_id, const share::schema::ObTableSchema& index_schema,
       common::ObIArray<ObColumnRefRawExpr*>& column_exprs, bool use_shared_spk = false);
   int resolve_index_all_column_exprs(uint64_t table_id, const share::schema::ObTableSchema& index_schema,

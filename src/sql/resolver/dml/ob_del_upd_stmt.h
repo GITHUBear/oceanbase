@@ -166,7 +166,9 @@ public:
         ignore_(false),
         is_returning_(false),
         has_global_index_(false),
-        dml_source_from_join_(false)
+        dml_source_from_join_(false),
+        mv_log_table_id_(0),
+        base_table_pk_column_id_(0)
   {}
   virtual ~ObDelUpdStmt()
   {}
@@ -268,6 +270,22 @@ public:
   {
     return dml_source_from_join_;
   }
+  inline void set_mv_log_table_id(uint64_t mv_log_tid) 
+  {
+    mv_log_table_id_ = mv_log_tid;
+  }
+  inline uint64_t get_mv_log_table_id() const
+  {
+    return mv_log_table_id_;
+  }
+  inline void set_base_table_pk_column_id(uint64_t column_id) 
+  {
+    base_table_pk_column_id_ = column_id;
+  }
+  inline uint64_t get_base_table_pk_column_id() const
+  {
+    return base_table_pk_column_id_;
+  }
 
   virtual int update_base_tid_cid();
   virtual int inner_get_share_exprs(ObIArray<ObRawExpr*>& candi_share_exprs) const override;
@@ -297,6 +315,8 @@ protected:
   bool is_returning_;
   bool has_global_index_;
   bool dml_source_from_join_;
+  uint64_t mv_log_table_id_;
+  uint64_t base_table_pk_column_id_;
 };
 }  // namespace sql
 }  // namespace oceanbase

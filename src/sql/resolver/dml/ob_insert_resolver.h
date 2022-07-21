@@ -79,6 +79,7 @@ protected:
   int resolve_values(const ParseNode& value_node);
   int resolve_insert_update_assignment(const ParseNode* node);
   int save_autoinc_params(uint64_t table_offset = 0);
+  int save_mvlog_autoinc_params(uint64_t mvlog_table_id);
   int replace_column_to_default(ObRawExpr*& origin);
   virtual int check_returning_validity();
   int resolve_multi_table_dml_info(uint64_t table_offset = 0);

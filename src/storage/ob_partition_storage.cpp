@@ -980,7 +980,7 @@ int ObPartitionStorage::need_reshape_table_row(const ObNewRow& row, RowReshape* 
 {
   int ret = OB_SUCCESS;
   need_reshape = false;
-  if (!row.is_valid() || row_reshape_cells_count != row.get_count()) {
+  if (!row.is_valid() /*|| row_reshape_cells_count != row.get_count()*/) {
     ret = OB_INVALID_ARGUMENT;
     STORAGE_LOG(WARN, "invalid argument", K(row), K(row.count_), K(row_reshape_cells_count), K(ret));
   } else {
@@ -1331,12 +1331,16 @@ int ObPartitionStorage::insert_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
     int64_t row_count_first_bulk = 0;
     bool first_bulk = true;
     ObNewRow* rows = NULL;
+    ObNewRow* new_rows = NULL;
     ObRowsInfo rows_info;
     const ObRelativeTable& data_table = run_ctx.relative_tables_.data_table_;
 
     DEBUG_SYNC(BEFORE_INSERT_ROWS);
 
     while (OB_SUCC(ret) && OB_SUCC(get_next_rows(row_iter, !is_ignore, rows, row_count))) {
+      bool mvlog_miss_match = false;
+      void* new_rows_ptr = nullptr;
+      void* new_cells_ptr = nullptr;
       if (row_count <= 0) {
         ret = OB_ERR_UNEXPECTED;
         STORAGE_LOG(WARN, "row_count should be greater than 0");
@@ -1363,10 +1367,100 @@ int ObPartitionStorage::insert_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
             tbl_rows[i].set_dml(T_DML_INSERT);
           }
         }
+        
+        for (int64_t i = 0; i < row_count; ++i) {
+          if (rows[i].get_count() < run_ctx.col_descs_->count()) {
+            // STORAGE_LOG(INFO, "mvlog insert row", K(rows[i].get_count()), K(run_ctx.col_descs_->count()), K(*(run_ctx.col_descs_)), K(rows_info), K(rows[0]));
+            mvlog_miss_match = true;
+            break;
+          }
+        }
+        
+        if (mvlog_miss_match) {
+          // forcely change run_ctx.col_descs_
+          ObColDescIArray* non_cont_col_descs_ptr = const_cast<ObColDescIArray*>(run_ctx.col_descs_);
+          non_cont_col_descs_ptr->at(rows[0].get_count()).col_id_ = run_ctx.col_descs_->at(rows[0].get_count() - 1).col_id_ + 1;
+          STORAGE_LOG(INFO, "mvlog force change run_ctx.col_descs_", K(*(run_ctx.col_descs_)));
+
+          if (OB_ISNULL(new_rows_ptr = work_allocator.alloc(row_count * sizeof(ObNewRow)))) {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+            STORAGE_LOG(ERROR, "fail to allocate memory", K(row_count * sizeof(ObNewRow)), K(ret));
+          } else {
+            new_rows = new (new_rows_ptr) ObNewRow[row_count];
+            // alloc rows cell
+            int64_t old_col_cnt = rows[0].get_count();
+            int64_t new_col_cnt = run_ctx.col_descs_->count();
+            if (OB_ISNULL(new_cells_ptr = work_allocator.alloc(row_count * new_col_cnt * sizeof(ObObj)))) {
+              ret = OB_ALLOCATE_MEMORY_FAILED;
+              STORAGE_LOG(ERROR, "fail to allocate memory", K(row_count * new_col_cnt * sizeof(ObObj)), K(ret));
+            } else {
+              for (int64_t i = 0; OB_SUCC(ret) && i < row_count; ++i) {
+                unsigned long offset = i * new_col_cnt * sizeof(ObObj);
+                new_rows[i].cells_ = new (static_cast<char*>(new_cells_ptr) + offset) common::ObObj[new_col_cnt];
+                new_rows[i].count_ = new_col_cnt;
+                new_rows[i].projector_ = nullptr;
+                new_rows[i].projector_size_ = 0;
+                // 0. pk_increment
+                uint64_t pk_increment_value = 0;
+                ObAutoincrementService& auto_service = ObAutoincrementService::get_instance();
+                if (dml_param.is_mvlog_autoinc_set_) {
+                  AutoincParam* autoinc_param = const_cast<AutoincParam*>(&(dml_param.mvlog_autoinc_param_));
+                  if (OB_ISNULL(autoinc_param)) {
+                    ret = OB_ERR_UNEXPECTED;
+                    LOG_WARN("should find auto-increment param", K(ret));
+                  } else if (OB_FAIL(auto_service.sync_insert_value_global(*autoinc_param))) {
+                    LOG_WARN("failed to sync insert value globally", K(ret));
+                  }
+                  if (OB_SUCC(ret)) {
+                    CacheHandle*& cache_handle = autoinc_param->cache_handle_;
+                    if (OB_ISNULL(cache_handle)) {
+                      if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
+                        LOG_WARN("failed to get auto_increment handle", K(ret));
+                      } else if (OB_ISNULL(cache_handle)) {
+                        ret = OB_ERR_UNEXPECTED;
+                        LOG_WARN("Error unexpceted", K(ret), K(cache_handle));
+                      }
+                    }
+                    if (OB_SUCC(ret)) {
+                      if (OB_FAIL(cache_handle->next_value(pk_increment_value))) {
+                        LOG_DEBUG("failed to get auto_increment value", K(ret), K(pk_increment_value));
+                        auto_service.release_handle(cache_handle);
+                        ++autoinc_param->autoinc_intervals_count_;
+                        if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
+                          LOG_WARN("failed to get auto_increment handle", K(ret));
+                        } else if (OB_FAIL(cache_handle->next_value(pk_increment_value))) {
+                          LOG_WARN("failed to get auto_increment value", K(ret));
+                        }
+                      }
+                    }
+                  }
+                }
+                if (OB_SUCC(ret)) {
+                  // LOG_INFO("mvlog auto_service get next value", K(pk_increment_value));
+                  new_rows[i].cells_[0].set_uint(ObUInt64Type, pk_increment_value);
+                  // 1-old_col_cnt. old cells
+                  for (int64_t j = 1; j <= old_col_cnt; ++j) {
+                    new_rows[i].cells_[j] = rows[i].cells_[j - 1];
+                  }
+                  // old_col_cnt + 1. dml_type
+                  new_rows[i].cells_[old_col_cnt + 1].set_uint(ObUInt64Type, 1);
+                }
+              }
+            }
+            STORAGE_LOG(INFO, "mvlog create new insert row", K(new_rows[0]));
+          }
+        }
       }
 
       if (OB_SUCC(ret)) {
-        ret = insert_rows_(run_ctx, rows, row_count, rows_info, tbl_rows, row_reshape_ins, afct_num, dup_num);
+        ret = insert_rows_(run_ctx, mvlog_miss_match ? new_rows : rows, row_count, rows_info, tbl_rows, row_reshape_ins, afct_num, dup_num);
+      }
+
+      if (nullptr != new_rows_ptr) {
+        work_allocator.free(new_rows_ptr);
+      }
+      if (nullptr != new_cells_ptr) {
+        work_allocator.free(new_cells_ptr);
       }
     }
     if (OB_ITER_END == ret) {

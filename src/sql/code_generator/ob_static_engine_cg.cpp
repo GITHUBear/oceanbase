@@ -1840,8 +1840,9 @@ int ObStaticEngineCG::generate_insert_subplan_access_exprs(const ObIArray<ObColu
           }
         }
         if (conv_idx >= base_table_columns.count()) {
-          ret = OB_ERR_UNEXPECTED;
-          LOG_WARN("fail to find columns", K(ret), K(index_exprs.at(i)));
+          // ret = OB_ERR_UNEXPECTED;
+          // LOG_WARN("fail to find columns", K(ret), K(index_exprs.at(i)));
+          // do nothing because of mvlog
         } else {
           ObRawExpr* conv_expr = conv_columns.at(conv_idx);
           if (OB_ISNULL(conv_expr)) {

@@ -17,6 +17,7 @@
 #include "common/ob_common_types.h"
 #include "share/ob_i_data_access_service.h"
 #include "share/datum/ob_datum.h"
+#include "share/ob_autoincrement_param.h"
 
 namespace oceanbase {
 namespace sql {
@@ -204,7 +205,8 @@ struct ObDMLBaseParam {
         is_ignore_(false),
         prelock_(false),
         duplicated_rows_(0),
-        dml_allocator_(nullptr)
+        dml_allocator_(nullptr),
+        is_mvlog_autoinc_set_(false)
   {
     query_flag_.read_latest_ = common::ObQueryFlag::OBSF_MASK_READ_LATEST;
   }
@@ -226,6 +228,8 @@ struct ObDMLBaseParam {
   bool prelock_;
   mutable int64_t duplicated_rows_;
   common::ObIAllocator *dml_allocator_;
+  bool is_mvlog_autoinc_set_;
+  share::AutoincParam mvlog_autoinc_param_;
   bool is_valid() const
   {
     return (timeout_ > 0 && schema_version_ >= 0);

@@ -92,7 +92,8 @@ struct AutoincParam {
         autoinc_intervals_count_(0),
         part_level_(schema::PARTITION_LEVEL_ZERO),
         pkey_(),
-        auto_increment_cache_size_(DEFAULT_INCREMENT_CACHE_SIZE)
+        auto_increment_cache_size_(DEFAULT_INCREMENT_CACHE_SIZE),
+        is_mvlog_(false)
   {}
 
   TO_STRING_KV("tenant_id", tenant_id_, "autoinc_table_id", autoinc_table_id_, "autoinc_first_part_num",
@@ -146,6 +147,7 @@ struct AutoincParam {
   schema::ObPartitionLevel part_level_;
   common::ObPartitionKey pkey_;
   int64_t auto_increment_cache_size_;
+  bool is_mvlog_;
   OB_UNIS_VERSION(1);
 };
 
