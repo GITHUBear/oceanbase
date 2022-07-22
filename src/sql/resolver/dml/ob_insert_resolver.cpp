@@ -222,7 +222,8 @@ int ObInsertResolver::resolve_single_table_insert(const ParseNode& node)
       bool is_exist = false, base_is_exist = false;
       const ParseNode* org_node = insert_into->children_[0];
       const ParseNode* relation_factor_node = NULL;
-      if (OB_NOT_NULL(org_node) && OB_NOT_NULL(relation_factor_node = org_node->children_[0])) {
+      if (OB_NOT_NULL(org_node) && OB_NOT_NULL(relation_factor_node = org_node->children_[0]) &&
+          relation_factor_node->str_value_[0] != '_') {
         char* mv_log_str = nullptr;
         base_table_name.assign_ptr(relation_factor_node->str_value_, relation_factor_node->str_len_);
         mv_log_str = static_cast<char*>(params_.allocator_->alloc(relation_factor_node->str_len_ + 7));
