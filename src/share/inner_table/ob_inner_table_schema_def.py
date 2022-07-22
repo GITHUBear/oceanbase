@@ -4862,6 +4862,22 @@ all_kv_ttl_task_history_def = dict(
 def_table_schema(**all_kv_ttl_task_def)
 def_table_schema(**all_kv_ttl_task_history_def)
 
+all_mv_info_def = dict(
+  table_name = '__all_mv_info_def',
+  table_id = '412',
+  table_type = 'SYSTEM_TABLE',
+  gm_columns = ['gmt_create', 'gmt_modified'],
+  in_tenant_space = True,
+  rowkey_columns = [
+      ('mv_id', 'int'),
+      ('mvlog_id', 'int')
+  ],
+  normal_columns = [
+    ('applied_seq', 'int')
+  ],
+)
+def_table_schema(**all_mv_info_def)
+
 # sys index schema def, only for compatible
 
 def_sys_index_table(
