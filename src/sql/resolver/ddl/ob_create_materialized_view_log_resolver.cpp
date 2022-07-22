@@ -248,6 +248,25 @@ int ObCreateMaterializedViewLogResolver::resolve(const ParseNode& parse_tree)
                     LOG_WARN("add column schema failed", K(ret));
                 }
             }
+            // add 'seqno' column
+            if (OB_SUCC(ret)) {
+                ObColumnSchemaV2 seqno_column;
+                seqno_column.reset();
+                seqno_column.set_tenant_id(tenant_id);
+                seqno_column.set_is_hidden(false);
+                seqno_column.set_column_id(++cur_column_id);
+                seqno_column.set_data_type(ObUInt64Type);
+                seqno_column.set_nullable(false);
+                seqno_column.set_charset_type(CHARSET_BINARY);
+                seqno_column.set_collation_type(CS_TYPE_BINARY);
+                if (OB_FAIL(seqno_column.set_column_name("_seqno"))) {
+                    ret = OB_ERR_UNEXPECTED;
+                    LOG_WARN("failed to set column name", K(ret));
+                } else if (table_schema.add_column(seqno_column)) {
+                    ret = OB_ERR_UNEXPECTED;
+                    LOG_WARN("add column schema failed", K(ret));
+                }
+            }
             col_cnt = table_schema.get_column_count();
             // add sequence col
             ObColumnSchemaV2 hidden_pk;

@@ -8947,7 +8947,7 @@ int ObDMLResolver::resolve_mvlog_all_column_exprs(uint64_t base_table_id, const 
               }
             }
           } else {
-            // _dml_type
+            // _dml_type & _seqno
             ObColumnRefRawExpr* col_expr = NULL;
             if (OB_FAIL(ObRawExprUtils::build_column_expr(*params_.expr_factory_, *column, col_expr))) {
               LOG_WARN("build column expr failed", K(ret));

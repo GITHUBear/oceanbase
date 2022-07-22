@@ -1444,6 +1444,8 @@ int ObPartitionStorage::insert_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
                   }
                   // old_col_cnt + 1. dml_type
                   new_rows[i].cells_[old_col_cnt + 1].set_uint(ObUInt64Type, 1);
+                  // old_col_cnt + 2. seqno
+                  new_rows[i].cells_[old_col_cnt + 2].set_uint(ObUInt64Type, pk_increment_value);
                 }
               }
             }
