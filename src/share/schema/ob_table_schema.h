@@ -1437,6 +1437,12 @@ public:
   {
     return depend_table_ids_;
   }
+  uint64_t get_mv_log_table_id() const {
+    return mv_log_table_id_;
+  }
+  void set_mv_log_table_id(uint64_t mv_log_tid) {
+    mv_log_table_id_ = mv_log_tid;
+  }
   uint64_t get_mv_tid(uint64_t idx) const
   {
     return (idx < mv_cnt_) ? mv_tid_array_[idx] : common::OB_INVALID_ID;
@@ -1681,6 +1687,7 @@ protected:
   // all base table ids for materialized view
   common::ObSEArray<uint64_t, 3> base_table_ids_;
   common::ObSEArray<uint64_t, 3> depend_table_ids_;
+  uint64_t mv_log_table_id_;       // the materialized view log table id (only use for MAV, access faster than __all_mv_info_def)
 
   // index_tid_array_ and index_cnt_ are deprecated, now use simple_index_infos_ to store index information in the table
   // int64_t index_cnt_;

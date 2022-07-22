@@ -304,6 +304,7 @@ private:
   int get_create_mv_parse_tree_groupby_columns(ParseNode* select_clause_groupby_node, ObArray<uint64_t>& column_refs);
   char* get_alias_fun_project_node_name(ObItemType type, ParseNode* function_project_node, void* malloc_pool);
   int make_column_ref_node(ParseNode*& new_node, const char* col_name, int64_t col_len, void* malloc_pool);
+  int get_mv_log_table_name(ParseNode*& org_node, char*& mv_log_name_ptr, uint64_t& mv_log_name_len, void* malloc_pool);
 
   template <typename ProcessorT>
   int handle_remote_batch_req(const ObReqTimestamp& req_ts, const char* buf, int32_t size);

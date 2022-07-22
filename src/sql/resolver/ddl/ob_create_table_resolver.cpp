@@ -452,6 +452,31 @@ int ObCreateTableResolver::resolve(const ParseNode& parse_tree)
       create_table_stmt->set_allocator(*allocator_);
       stmt_ = create_table_stmt;
     }
+    if (!OB_ISNULL(params_.mv_log_table_name_ptr_)) {
+      // check for materialized view
+      ObSchemaChecker* schema_checker = params_.schema_checker_;
+      const uint64_t tenant_id = session_info_->get_effective_tenant_id();
+      ObString mv_log_table_name;
+      mv_log_table_name.assign_ptr(params_.mv_log_table_name_ptr_, params_.mv_log_table_name_len_);
+      ObString database_name = session_info_->get_database_name();
+      bool is_exist = false;
+      uint64_t mv_log_table_id = 0;
+      if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_name, mv_log_table_name, false, is_exist))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("failed to check table exists", K(ret));
+      } else if (!is_exist) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("materialized view create without mv log is not supported", K(ret));
+      } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_name, mv_log_table_name, 
+                                                                          false, ObSchemaGetterGuard::ALL_TYPES, mv_log_table_id))) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("failed to get table id", K(ret));
+      } else {
+        ObCreateTableArg& create_arg = create_table_stmt->get_create_table_arg();
+        create_arg.mv_log_table_id_ = mv_log_table_id;
+        LOG_INFO("create materialized view with mv log", K(mv_log_table_id));
+      }
+    }
     // resolve temporary option
     if (OB_SUCC(ret)) {
       if (NULL != create_table_node->children_[0]) {

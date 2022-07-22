@@ -917,6 +917,9 @@ int ObDDLService::generate_schema(const ObCreateTableArg &arg, ObTableSchema &sc
     }
   }
 
+  schema.set_mv_log_table_id(arg.mv_log_table_id_);
+  LOG_INFO("create materialized view set table_schema.mv_log_table_id", K(arg.mv_log_table_id_));
+
   // support to create inner table if enable_sys_table_ddl is opened
   // -- system view                            ----> table_type will be TABLE_TYPE_VIEW
   // -- other(virtual table or core table)     ----> table_type will be TABLE_TYPE_SYS

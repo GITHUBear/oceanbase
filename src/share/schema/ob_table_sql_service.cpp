@@ -2357,6 +2357,7 @@ int ObTableSqlService::gen_table_dml(const uint64_t exec_tenant_id, const ObTabl
                OB_FAIL(dml.add_column("partition_schema_version", table.get_partition_schema_version())) ||
                OB_FAIL(dml.add_column("previous_locality", ObHexEscapeSqlStr(previous_locality))) ||
                OB_FAIL(dml.add_column("pk_comment", ObHexEscapeSqlStr(table.get_pk_comment()))) ||
+               OB_FAIL(dml.add_column("mv_log_table_id", table.get_mv_log_table_id())) ||
                OB_FAIL(dml.add_column("row_store_type",
                    ObHexEscapeSqlStr(ObStoreFormat::get_row_store_name(table.get_row_store_type())))) ||
                OB_FAIL(dml.add_column("store_format",
