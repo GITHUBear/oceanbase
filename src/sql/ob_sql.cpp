@@ -3412,12 +3412,19 @@ int ObSql::handle_physical_plan(
           LOG_WARN("failed to init hashset", K(ret), K(select_clause_project_list->num_child_));
         } else {
           // TODO: add some flags in ParseNode
-          for (int i = 0; i < select_clause_project_list->num_child_; ++i) {
+          for (int i = 0; OB_SUCC(ret) && i < select_clause_project_list->num_child_; ++i) {
             ParseNode* project_node = select_clause_project_list->children_[i]->children_[0];
             ObItemType project_type = project_node->type_;
             switch (project_type) {
             case T_FUN_SUM: {
-              function_node_pos.push_back(i);
+              if (OB_NOT_NULL(project_node->children_[0]) ||
+                  OB_ISNULL(project_node->children_[1]) ||
+                  project_node->children_[1]->type_ != T_COLUMN_REF) {
+                ret = OB_NOT_SUPPORTED;
+                LOG_WARN("complex aggregate func arg is not supported", K(ret));
+              } else {
+                function_node_pos.push_back(i);
+              }
               break;
             }
             case T_FUN_MIN: {
@@ -3465,7 +3472,6 @@ int ObSql::handle_physical_plan(
               break;
             }
             }
-            if (OB_FAIL(ret)) break;
           }
 
           if (OB_FAIL(ret)) {
@@ -3538,6 +3544,7 @@ int ObSql::handle_physical_plan(
               ObArray<uint64_t> new_project_string_nodes;
               ParseNode* tmp = nullptr;
               ParseNode* new_project_list_node = nullptr;
+              // 2.1 add missing group by columns
               for (int i = 0; i < missing_groupby_col_pos.size(); ++i) {
                 int idx = missing_groupby_col_pos.at(i);
                 ParseNode* missing_groupby_col_ref = (ParseNode*)(groupby_columns.at(idx));
@@ -3547,6 +3554,39 @@ int ObSql::handle_physical_plan(
                   break;
                 } else {
                   new_project_string_nodes.push_back((uint64_t)tmp);
+                }
+              }
+              // 2.2 add count(*) select project
+              char* count_star_ptr = nullptr;
+              char* count_star_alias_ptr = nullptr;
+              ParseNode* alias_tmp = nullptr;
+              if (OB_SUCC(ret)) {
+                if (OB_ISNULL(tmp = new_terminal_node(parse_result.malloc_pool_, T_STAR)) ||
+                    OB_ISNULL(tmp = new_non_terminal_node(parse_result.malloc_pool_, T_FUN_COUNT, 1, tmp)) ||
+                    OB_ISNULL(count_star_ptr = static_cast<char*>(parse_malloc(8, parse_result.malloc_pool_))) ||
+                    // OB_ISNULL(tmp = new_non_terminal_node(parse_result.malloc_pool_, T_PROJECT_STRING, 1, tmp)) ||
+                    OB_ISNULL(count_star_alias_ptr = static_cast<char*>(parse_malloc(4, parse_result.malloc_pool_))) ||
+                    OB_ISNULL(alias_tmp = new_terminal_node(parse_result.malloc_pool_, T_IDENT))) {
+                  ret = OB_PARSER_ERR_NO_MEMORY;
+                  LOG_WARN("No more space for parse malloc\n");
+                } else {
+                  memmove(count_star_ptr, "count(*)", 8);
+                  memmove(count_star_alias_ptr, "_cnt", 4);
+                  alias_tmp->str_value_ = count_star_alias_ptr;
+                  alias_tmp->str_len_ = 4;
+                }
+                if (OB_SUCC(ret)) {
+                  if (OB_ISNULL(alias_tmp = new_non_terminal_node(parse_result.malloc_pool_, T_ALIAS, 2, tmp, alias_tmp)) ||
+                      OB_ISNULL(alias_tmp->str_value_ = parse_strndup("_cnt", 4, parse_result.malloc_pool_)) ||
+                      OB_ISNULL(tmp = new_non_terminal_node(parse_result.malloc_pool_, T_PROJECT_STRING, 1, alias_tmp)) ||
+                      OB_ISNULL(tmp->str_value_ = parse_strndup("count(*)", 8, parse_result.malloc_pool_))) {
+                    ret = OB_PARSER_ERR_NO_MEMORY;
+                    LOG_WARN("No more space for parse malloc\n");
+                  } else {
+                    alias_tmp->str_len_ = 4;
+                    tmp->str_len_ = 8;
+                    new_project_string_nodes.push_back((uint64_t)tmp);
+                  }
                 }
               }
               if (OB_FAIL(ret)) {

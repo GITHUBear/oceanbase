@@ -1503,7 +1503,9 @@ int ObCreateTableResolver::resolve_table_elements_from_select(const ParseNode& p
     } else {
       ObIArray<SelectItem>& select_items = select_stmt->get_select_items();
       ObColumnSchemaV2 column;
-      create_table_stmt->set_sub_select(select_stmt);
+      if (OB_ISNULL(params_.mv_log_table_name_ptr_)) {
+        create_table_stmt->set_sub_select(select_stmt);
+      }
       for (int64_t i = 0; OB_SUCC(ret) && i < select_items.count(); ++i) {
         const SelectItem& cur_item = select_items.at(i);
         const ObString* cur_name = NULL;
