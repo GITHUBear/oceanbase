@@ -4242,6 +4242,61 @@ int ObClearRestoreSourceResolver::resolve(const ParseNode& parse_tree)
   return ret;
 }
 
+int ObRefreshMaterializedViewResolver::trans_func_column_str(const share::schema::ObTableSchema* mvlog_table_schema, const share::schema::ObColumnSchemaV2* column, char*& func_col_str)
+{
+  int ret = OB_SUCCESS;
+  // find first '_'
+  int64_t idx = 0;
+  const ObString& column_str = column->get_column_name_str();
+  for (; idx < column_str.length(); ++idx) {
+    if (column_str[idx] == '_') break;
+  }
+  if (idx >= column_str.length() ||
+      idx == 0 || idx == column_str.length() - 1) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_WARN("column name format not match", K(ret));
+  } else {
+    // column exists?
+    if (OB_ISNULL(mvlog_table_schema->get_column_schema(column_str.ptr() + idx + 1))) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_WARN("function arg is not a simple column name", K(ret));
+    } else {
+      // sum/min/max/avg/count
+      char tmp[11];
+      bool is_match = false;
+      if (idx > 5) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("funtion type not support", K(ret));
+      } else {
+        memmove(tmp, column_str.ptr(), idx);
+        tmp[idx] = '\0';
+        if (!strcmp(tmp, "SUM") || 
+            !strcmp(tmp, "MIN") || 
+            !strcmp(tmp, "MAX") ||
+            !strcmp(tmp, "AVG") ||
+            !strcmp(tmp, "COUNT")) {
+          is_match = true;
+        } else {
+          ret = OB_NOT_SUPPORTED;
+          LOG_WARN("funtion type not support", K(ret));
+        }
+      }
+      if (OB_SUCC(ret) && is_match) {
+        if (OB_ISNULL(func_col_str = static_cast<char*>(allocator_->alloc(column_str.length() + 2)))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to alloc str", K(ret));
+        } else {
+          memmove(func_col_str, column_str.ptr(), column_str.length());
+          func_col_str[idx] = '(';
+          func_col_str[column_str.length()] = ')';
+          func_col_str[column_str.length() + 1] = '\0';
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
 {
   int ret = OB_SUCCESS;
@@ -4306,10 +4361,12 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
         }
 
         const ObTableSchema* mv_table_schema = nullptr;
+        const ObTableSchema* mvlog_table_schema = nullptr;
         // Note: we use mv_log_table_id in Table Schema for singular mvlog
         // TODO: use '__all_mv_info_def' later!
         uint64_t mvlog_table_id = 0;
         if (OB_SUCC(ret)) {
+          stmt->mv_table_id_ = mv_table_id;
           if (OB_FAIL(schema_checker->get_table_schema(mv_table_id, mv_table_schema))) {
             ret = OB_ERR_UNEXPECTED;
             LOG_WARN("fail to get table schema", K(ret));
@@ -4323,13 +4380,23 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
             ret = OB_NOT_SUPPORTED;
             LOG_WARN("refresh mv table without mvlog table", K(ret));
           }
+          if (OB_SUCC(ret)) {
+            stmt->mvlog_table_id_ = mvlog_table_id;
+            if (OB_FAIL(schema_checker->get_table_schema(mvlog_table_id, mvlog_table_schema))) {
+              ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("fail to get table schema", K(ret));
+            } else if (OB_ISNULL(mvlog_table_schema)) {
+              ret = OB_NOT_SUPPORTED;
+              LOG_WARN("refresh mv table without mvlog table", K(ret));
+            }
+          }
         }
 
         if (OB_SUCC(ret)) {
           const ObColumnSchemaV2* column = nullptr;
           ObTableSchema::const_column_iterator iter = mv_table_schema->column_begin();
           ObTableSchema::const_column_iterator end = mv_table_schema->column_end();
-          for (; iter != end; ++iter) {
+          for (; OB_SUCC(ret) && iter != end; ++iter) {
             column = *iter;
             if (OB_ISNULL(column)) {
               ret = OB_ERR_UNEXPECTED;
@@ -4338,6 +4405,38 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
               if (column->is_invisible_column()) {
                 ret = OB_NOT_SUPPORTED;
                 LOG_WARN("mv table with invisible rowkey", K(ret));
+              } else if (OB_ISNULL(mvlog_table_schema->get_column_schema(column->get_column_name()))) {
+                ret = OB_NOT_SUPPORTED;
+                LOG_WARN("cannot find column in mvlog table", K(ret));
+              } else {
+                ObString column_str;
+                if (OB_FAIL(ob_write_string(*allocator_, column->get_column_name_str(), column_str))) {
+                  ret = OB_ERR_UNEXPECTED;
+                  LOG_WARN("fail to write string", K(ret), K(column->get_column_name_str()));
+                } else {
+                  // must be group by columns
+                  (column_str.ptr())[column_str.length()] = '\0';
+                  stmt->select_project_strs_.push_back(column_str);
+                  stmt->groupby_idx_.push_back(stmt->select_project_strs_.count() - 1);
+                }
+              }
+            } else {
+              if (strcmp(column->get_column_name(), "_cnt") == 0) {
+                ObString count_str;
+                count_str.assign_ptr("count(*)", 8);
+                stmt->select_project_strs_.push_back(count_str);
+              } else {
+                // function column
+                char* func_col = nullptr;
+                if (OB_FAIL(trans_func_column_str(mvlog_table_schema, column, func_col))) {
+                  ret = OB_NOT_SUPPORTED;
+                } else if (OB_ISNULL(func_col)) {
+                  ret = OB_ERR_UNEXPECTED;
+                } else {
+                  ObString func_col_str;
+                  func_col_str.assign_ptr(func_col, strlen(func_col));
+                  stmt->select_project_strs_.push_back(func_col_str);
+                }
               }
             }
           }

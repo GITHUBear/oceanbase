@@ -153,7 +153,17 @@ DEF_SIMPLE_CMD_RESOLVER(ObBackupSetDecryptionResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObBackupBackupPieceResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObAddRestoreSourceResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObClearRestoreSourceResolver);
-DEF_SIMPLE_CMD_RESOLVER(ObRefreshMaterializedViewResolver);
+
+class ObRefreshMaterializedViewResolver : public ObSystemCmdResolver {
+public:
+  ObRefreshMaterializedViewResolver(ObResolverParams& params) : ObSystemCmdResolver(params)
+  {}
+  virtual ~ObRefreshMaterializedViewResolver()
+  {}
+  virtual int resolve(const ParseNode& parse_tree);
+private:
+  int trans_func_column_str(const share::schema::ObTableSchema* mvlog_table_schema, const share::schema::ObColumnSchemaV2* column, char*& func_col_str);
+};
 
 class ObPhysicalRestoreTenantResolver : public ObSystemCmdResolver {
 public:

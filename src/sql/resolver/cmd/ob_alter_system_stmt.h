@@ -1280,8 +1280,11 @@ public:
   {}
   virtual ~ObRefreshMaterializedViewStmt()
   {}
-private:
-  
+
+  uint64_t mv_table_id_;
+  uint64_t mvlog_table_id_;
+  common::ObArray<uint64_t> groupby_idx_;
+  common::ObArray<ObString> select_project_strs_;
 };
 
 }  // end namespace sql
