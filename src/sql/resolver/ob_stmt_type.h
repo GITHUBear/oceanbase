@@ -256,6 +256,7 @@ OB_STMT_TYPE_DEF(T_SHOW_RESTORE_PREVIEW, err_stmt_type_priv, 264)
 OB_STMT_TYPE_DEF(T_DISCONNECT_CLUSTER, get_sys_tenant_super_priv, 270)
 OB_STMT_TYPE_DEF(T_TABLE_TTL, get_sys_tenant_alter_system_priv, 271)
 OB_STMT_TYPE_DEF(T_CREATE_MATERIALIZED_VIEW, get_create_table_stmt_need_privs, 272)
+OB_STMT_TYPE_DEF(T_REFRESH_MATERIALIZED_VIEW, no_priv_needed, 273)
 OB_STMT_TYPE_DEF(T_MAX, err_stmt_type_priv, 500)
 #endif
 

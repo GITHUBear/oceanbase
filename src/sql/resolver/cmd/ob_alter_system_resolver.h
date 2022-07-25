@@ -153,6 +153,7 @@ DEF_SIMPLE_CMD_RESOLVER(ObBackupSetDecryptionResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObBackupBackupPieceResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObAddRestoreSourceResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObClearRestoreSourceResolver);
+DEF_SIMPLE_CMD_RESOLVER(ObRefreshMaterializedViewResolver);
 
 class ObPhysicalRestoreTenantResolver : public ObSystemCmdResolver {
 public:

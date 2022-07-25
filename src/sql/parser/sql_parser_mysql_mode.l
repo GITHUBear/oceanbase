@@ -280,6 +280,7 @@ REAL                          { REPUT_TOKEN_NEG_SIGN(REAL); }
 RECURSIVE                     { REPUT_TOKEN_NEG_SIGN(RECURSIVE); }
 RELEASE                       { REPUT_TOKEN_NEG_SIGN(RELEASE); }
 REFERENCES                    { REPUT_TOKEN_NEG_SIGN(REFERENCES); }
+REFRESH                       { REPUT_TOKEN_NEG_SIGN(REFRESH); }
 REGEXP                        { REPUT_TOKEN_NEG_SIGN(REGEXP); }
 RENAME                        { REPUT_TOKEN_NEG_SIGN(RENAME); }
 REPLACE                       { REPUT_TOKEN_NEG_SIGN(REPLACE); }

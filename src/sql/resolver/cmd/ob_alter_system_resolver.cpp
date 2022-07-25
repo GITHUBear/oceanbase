@@ -4242,5 +4242,111 @@ int ObClearRestoreSourceResolver::resolve(const ParseNode& parse_tree)
   return ret;
 }
 
+int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
+{
+  int ret = OB_SUCCESS;
+  if (OB_UNLIKELY(T_REFRESH_MATERIALIZED_VIEW != parse_tree.type_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("type is not T_REFRESH_MATERIALIZED_VIEW", "type", get_type_name(parse_tree.type_));
+  } else if (OB_UNLIKELY(1 != parse_tree.num_child_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected num_child of parse_tree", K(parse_tree.num_child_), K(ret));
+  } else if (OB_ISNULL(parse_tree.children_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("children should not be NULL", K(ret));
+  } else if (OB_ISNULL(allocator_)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("allocator_ should not be NULL", K(ret));
+  } else if (OB_ISNULL(session_info_)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("session_info_ should not be NULL", K(ret));
+  } else if (OB_ISNULL(params_.query_ctx_)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("query_ctx should not be NULL", K(ret));
+  } else {
+    ObSchemaChecker* schema_checker = params_.schema_checker_;
+    ObRefreshMaterializedViewStmt* stmt = NULL;
+    if (OB_ISNULL(stmt = create_stmt<ObRefreshMaterializedViewStmt>())) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_ERROR("create ObRefreshMaterializedViewStmt failed", K(ret));
+    } else {
+      stmt_ = stmt;
+    }
+    if (OB_SUCC(ret)) {
+      ParseNode* mv_table_ref_node = parse_tree.children_[0];
+      if (mv_table_ref_node->type_ != T_RELATION_FACTOR ||
+          mv_table_ref_node->num_child_ != 2 ||
+          OB_NOT_NULL(mv_table_ref_node->children_[0]) ||
+          OB_ISNULL(mv_table_ref_node->children_[1]) ||
+          mv_table_ref_node->children_[1]->type_ != T_IDENT) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_ERROR("complex table factor is not supported", K(ret));
+      } else {
+        const uint64_t tenant_id = session_info_->get_effective_tenant_id();
+        ObString database_name = session_info_->get_database_name();
+        uint64_t database_id = 0;
+        ObString mv_table_name;
+        mv_table_name.assign_ptr(mv_table_ref_node->children_[1]->str_value_, 
+                                 mv_table_ref_node->children_[1]->str_len_);
+        bool mv_table_exists = false;
+        uint64_t mv_table_id = 0;
+        if (OB_FAIL(schema_checker->get_database_id(tenant_id, database_name, database_id))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to get database id", K(ret));
+        } else if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_id, mv_table_name, false, mv_table_exists))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to check table exists", K(ret));
+        } else if (!mv_table_exists) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_WARN("mv table not found", K(ret));
+        } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_id, mv_table_name,
+                                      false, ObSchemaGetterGuard::ALL_TYPES, mv_table_id))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to get table id", K(ret));
+        }
+
+        const ObTableSchema* mv_table_schema = nullptr;
+        // Note: we use mv_log_table_id in Table Schema for singular mvlog
+        // TODO: use '__all_mv_info_def' later!
+        uint64_t mvlog_table_id = 0;
+        if (OB_SUCC(ret)) {
+          if (OB_FAIL(schema_checker->get_table_schema(mv_table_id, mv_table_schema))) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("fail to get table schema", K(ret));
+          } else if (OB_ISNULL(mv_table_schema)) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("mv table schema is null", K(ret));
+          } else {
+            mvlog_table_id = mv_table_schema->get_mv_log_table_id();
+          }
+          if (mvlog_table_id == 0) {
+            ret = OB_NOT_SUPPORTED;
+            LOG_WARN("refresh mv table without mvlog table", K(ret));
+          }
+        }
+
+        if (OB_SUCC(ret)) {
+          const ObColumnSchemaV2* column = nullptr;
+          ObTableSchema::const_column_iterator iter = mv_table_schema->column_begin();
+          ObTableSchema::const_column_iterator end = mv_table_schema->column_end();
+          for (; iter != end; ++iter) {
+            column = *iter;
+            if (OB_ISNULL(column)) {
+              ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("invalid column schema", K(column));
+            } else if (column->is_rowkey_column()) {
+              if (column->is_invisible_column()) {
+                ret = OB_NOT_SUPPORTED;
+                LOG_WARN("mv table with invisible rowkey", K(ret));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 }  // end namespace sql
 }  // end namespace oceanbase

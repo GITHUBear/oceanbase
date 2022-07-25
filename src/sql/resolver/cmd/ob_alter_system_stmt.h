@@ -1274,6 +1274,16 @@ public:
   {}
 };
 
+class ObRefreshMaterializedViewStmt : public ObSystemCmdStmt {
+public:
+  ObRefreshMaterializedViewStmt() : ObSystemCmdStmt(stmt::T_REFRESH_MATERIALIZED_VIEW)
+  {}
+  virtual ~ObRefreshMaterializedViewStmt()
+  {}
+private:
+  
+};
+
 }  // end namespace sql
 }  // end namespace oceanbase
 

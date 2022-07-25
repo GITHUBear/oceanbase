@@ -11664,6 +11664,11 @@ ALTER SYSTEM REFRESH MEMORY STAT opt_server_or_zone
   malloc_non_terminal_node($$, result->malloc_pool_, T_REFRESH_MEMORY_STAT, 1, $6);
 }
 |
+ALTER SYSTEM REFRESH MATERIALIZED VIEW view_name
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_REFRESH_MATERIALIZED_VIEW, 1, $6);
+}
+|
 ALTER SYSTEM opt_set alter_system_set_parameter_actions
 {
   (void)$3;
