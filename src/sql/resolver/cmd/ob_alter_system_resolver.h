@@ -163,6 +163,7 @@ public:
   virtual int resolve(const ParseNode& parse_tree);
 private:
   int trans_func_column_str(const share::schema::ObTableSchema* mvlog_table_schema, const share::schema::ObColumnSchemaV2* column, char*& func_col_str);
+  int get_base_table_name(const ObString& mvlog_name_str, ObString& base_table_name);
 };
 
 class ObPhysicalRestoreTenantResolver : public ObSystemCmdResolver {

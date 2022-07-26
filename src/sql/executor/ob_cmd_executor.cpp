@@ -763,6 +763,10 @@ int ObCmdExecutor::execute(ObExecContext& ctx, ObICmd& cmd)
       DEFINE_EXECUTE_CMD(ObTableTTLStmt, ObTableTTLExecutor);
       break;
     }
+    case stmt::T_REFRESH_MATERIALIZED_VIEW: {
+      DEFINE_EXECUTE_CMD(ObRefreshMaterializedViewStmt, ObRefreshMaterializedViewExecutor);
+      break;
+    }
     case stmt::T_CS_DISKMAINTAIN:
     case stmt::T_TABLET_CMD:
     case stmt::T_SWITCH_ROOTSERVER:

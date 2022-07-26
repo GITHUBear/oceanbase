@@ -1281,8 +1281,15 @@ public:
   virtual ~ObRefreshMaterializedViewStmt()
   {}
 
+  ObString database_name_;
+  uint64_t base_table_id_;
+  ObString base_table_name_;
   uint64_t mv_table_id_;
+  ObString mv_table_name_;
   uint64_t mvlog_table_id_;
+  ObString mvlog_table_name_;
+  // AVG/MIN/MAX is not supported now
+  // TODO: add func flags
   common::ObArray<uint64_t> groupby_idx_;
   common::ObArray<ObString> select_project_strs_;
 };

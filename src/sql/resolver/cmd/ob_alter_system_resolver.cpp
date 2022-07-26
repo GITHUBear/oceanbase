@@ -4297,6 +4297,28 @@ int ObRefreshMaterializedViewResolver::trans_func_column_str(const share::schema
   return ret;
 }
 
+int ObRefreshMaterializedViewResolver::get_base_table_name(const ObString& mvlog_name_str, ObString& base_table_name)
+{
+  int ret = OB_SUCCESS;
+  char* base_table_name_ptr = nullptr;
+  int64_t idx = mvlog_name_str.length() - 1;
+  for (; idx >= 0; --idx) {
+    if (mvlog_name_str[idx] == '_') break;
+  }
+  if (idx <= 0) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_WARN("mvlog name format not match", K(ret));
+  } else if (OB_ISNULL(base_table_name_ptr = static_cast<char*>(allocator_->alloc(idx + 1)))) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to alloc str", K(ret));
+  } else {
+    memmove(base_table_name_ptr, mvlog_name_str.ptr(), idx);
+    base_table_name_ptr[idx] = '\0';
+    base_table_name.assign_ptr(base_table_name_ptr, idx);
+  }
+  return ret;
+}
+
 int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
 {
   int ret = OB_SUCCESS;
@@ -4358,11 +4380,17 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
                                       false, ObSchemaGetterGuard::ALL_TYPES, mv_table_id))) {
           ret = OB_ERR_UNEXPECTED;
           LOG_WARN("fail to get table id", K(ret));
+        } else if (OB_FAIL(ob_write_string(*allocator_, mv_table_name, stmt->mv_table_name_, true))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to write string", K(ret), K(mv_table_name));
+        } else if (OB_FAIL(ob_write_string(*allocator_, database_name, stmt->database_name_, true))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to write string", K(ret), K(database_name));
         }
 
         const ObTableSchema* mv_table_schema = nullptr;
         const ObTableSchema* mvlog_table_schema = nullptr;
-        // Note: we use mv_log_table_id in Table Schema for singular mvlog
+        // Note: we use mv_log_table_id in Table Schema for single mvlog
         // TODO: use '__all_mv_info_def' later!
         uint64_t mvlog_table_id = 0;
         if (OB_SUCC(ret)) {
@@ -4388,7 +4416,28 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
             } else if (OB_ISNULL(mvlog_table_schema)) {
               ret = OB_NOT_SUPPORTED;
               LOG_WARN("refresh mv table without mvlog table", K(ret));
+            } else if (OB_FAIL(ob_write_string(*allocator_, mvlog_table_schema->get_table_name_str(), stmt->mvlog_table_name_, true))) {
+              ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("fail to write string", K(ret), K(mvlog_table_schema->get_table_name_str()));
             }
+          }
+        }
+
+        if (OB_SUCC(ret)) {
+          bool base_table_exists = false;
+          if (OB_FAIL(get_base_table_name(stmt->mvlog_table_name_, stmt->base_table_name_))) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("fail to get base table name", K(ret));
+          } else if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_id, stmt->base_table_name_, false, base_table_exists))) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("fail to check base table exists", K(ret));
+          } else if (!base_table_exists) {
+            ret = OB_NOT_SUPPORTED;
+            LOG_WARN("base table not found", K(ret));
+          } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_id, stmt->base_table_name_,
+                                      false, ObSchemaGetterGuard::ALL_TYPES, stmt->base_table_id_))) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("fail to get base table id", K(ret));
           }
         }
 
@@ -4410,12 +4459,11 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
                 LOG_WARN("cannot find column in mvlog table", K(ret));
               } else {
                 ObString column_str;
-                if (OB_FAIL(ob_write_string(*allocator_, column->get_column_name_str(), column_str))) {
+                if (OB_FAIL(ob_write_string(*allocator_, column->get_column_name_str(), column_str, true))) {
                   ret = OB_ERR_UNEXPECTED;
                   LOG_WARN("fail to write string", K(ret), K(column->get_column_name_str()));
                 } else {
                   // must be group by columns
-                  (column_str.ptr())[column_str.length()] = '\0';
                   stmt->select_project_strs_.push_back(column_str);
                   stmt->groupby_idx_.push_back(stmt->select_project_strs_.count() - 1);
                 }

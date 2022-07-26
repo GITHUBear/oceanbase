@@ -32,6 +32,7 @@
 #include "observer/mysql/ob_mysql_request_manager.h"
 #include "share/rc/ob_tenant_base.h"
 #include "storage/ob_dag_warning_history_mgr.h"
+#include "observer/ob_sql_client_decorator.h"
 
 namespace oceanbase {
 using namespace common;
@@ -1911,6 +1912,183 @@ int ObTableTTLExecutor::execute(ObExecContext& ctx, ObTableTTLStmt& stmt)
     arg.cmd_code_ = static_cast<int64_t>(stmt.get_type());
     if (OB_FAIL(common_rpc_proxy->table_ttl(arg))) {
       LOG_WARN("handle table ttl failed", K(arg), K(ret));
+    }
+  }
+  return ret;
+}
+
+int ObRefreshMaterializedViewExecutor::total_refresh(ObMySQLTransaction* trans, uint64_t exec_tenant_id, uint64_t cur_mvlog_max_seqno)
+{
+  // (void)cur_mvlog_max_seqno;
+  int ret = OB_SUCCESS;
+  ObISQLClient* sql_client = trans;
+  SMART_VAR(char[OB_MAX_SQL_LENGTH], sql)
+  {
+    int cur_idx = snprintf(sql, OB_MAX_SQL_LENGTH,
+                            "INSERT INTO %s.%s SELECT ",
+                            stmt_->database_name_.ptr(),
+                            stmt_->mv_table_name_.ptr());
+    for (int64_t i = 0; i < stmt_->select_project_strs_.count(); ++i) {
+      const ObString& select_str = stmt_->select_project_strs_.at(i);
+      if (i != 0) {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH, 
+                            ", %s", select_str.ptr());
+      } else {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                            "%s", select_str.ptr());
+      }
+    }
+
+    cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                        " FROM %s.%s GROUP BY ",
+                        stmt_->database_name_.ptr(), 
+                        stmt_->base_table_name_.ptr());
+
+    for (int64_t i = 0; i < stmt_->groupby_idx_.count(); ++i) {
+      const ObString& groupby_str = stmt_->select_project_strs_.at(stmt_->groupby_idx_.at(i));
+      if (i != 0) {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                            ", %s", groupby_str.ptr());
+      } else {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                            "%s", groupby_str.ptr());
+      }
+    }
+
+    int64_t affected_rows = 0;
+    if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+      LOG_WARN("total refresh do sql failed", K(ret));
+    }
+
+    snprintf(sql, OB_MAX_SQL_LENGTH, 
+              "INSERT INTO %s VALUES (null, null, %lu, %lu, %lu)",
+              OB_ALL_MV_INFO_DEF_TNAME, 
+              stmt_->mv_table_id_, stmt_->mvlog_table_id_, 
+              cur_mvlog_max_seqno);
+    // snprintf(sql, OB_MAX_SQL_LENGTH, 
+    //           "UPDATE %s SET applied_seq = %lu WHERE mv_id = %lu AND mvlog_id = %lu",
+    //           OB_ALL_MV_INFO_DEF_TNAME, 
+    //           cur_mvlog_max_seqno,
+    //           stmt_->mv_table_id_, stmt_->mvlog_table_id_);
+    if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+      LOG_WARN("total refresh update __all_mv_info_def failed", K(ret));
+    } else if (affected_rows != 1) {
+      LOG_WARN("no update happened");
+    }
+  }
+  return ret;
+}
+
+int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMaterializedViewStmt& stmt) 
+{
+  int ret = OB_SUCCESS;
+  stmt_ = &stmt;
+  ObMySQLTransaction trans;
+  ObISQLClient* sql_client = &trans;
+  common::ObMySQLProxy* sql_proxy = ctx.get_sql_proxy();
+  if (OB_ISNULL(sql_proxy)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("sql_proxy is null", K(ret));
+  } else if (OB_FAIL(trans.start(sql_proxy, true))) {
+    LOG_WARN("failed to start transaction", K(ret));
+  } else {
+    uint64_t exec_tenant_id = GET_MY_SESSION(ctx)->get_effective_tenant_id();
+    bool is_total_refresh = false;
+    int64_t applied_seq = 0;
+    uint64_t cur_mvlog_max_seqno = 0;
+    bool mvlog_empty = false;
+    SMART_VAR(char[OB_MAX_SQL_LENGTH], sql)
+    {
+      snprintf(sql, OB_MAX_SQL_LENGTH,
+                "SELECT mv_id, mvlog_id, applied_seq FROM %s"
+                " WHERE mv_id = %lu AND mvlog_id = %lu", 
+                OB_ALL_MV_INFO_DEF_TNAME,
+                stmt.mv_table_id_, stmt.mvlog_table_id_);
+      // select __all_mv_info_def
+      SMART_VAR(ObMySQLProxy::MySQLResult, res)
+      {
+        common::sqlclient::ObMySQLResult* result = NULL;
+        // common::ObSQLClientRetryWeak sql_client_retry_weak(sql_client, exec_tenant_id, OB_ALL_MV_INFO_DEF_TID);
+        if (OB_FAIL(sql_client->read(res, exec_tenant_id, sql))) {
+          LOG_WARN(" failed to read data", K(ret));
+        } else if (OB_ISNULL(result = res.get_result())) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("failed to get result", K(ret));
+        } else if (OB_FAIL(result->next())) {
+          if (ret == OB_ITER_END) {
+            // It's the first time to call refresh materialized view
+            // total-refresh
+            is_total_refresh = true;
+            ret = OB_SUCCESS;
+          } else {
+            LOG_WARN("failed to get next", K(ret));
+          }
+        } else {
+          // delta-refresh
+          if (OB_FAIL(result->get_int("applied_seq", applied_seq))) {
+            LOG_WARN("fail to get int_value.", K(ret));
+          }
+        }
+        if (OB_FAIL(result->close())) {
+          LOG_WARN("close result failed", K(ret));
+        }
+      }
+
+      snprintf(sql, OB_MAX_SQL_LENGTH,
+                "SELECT MAX(_seqno) FROM %s.%s",
+                stmt.database_name_.ptr(), 
+                stmt.mvlog_table_name_.ptr());      
+      {
+        common::sqlclient::ObMySQLResult* result = NULL;
+        if (OB_FAIL(sql_client->read(res, exec_tenant_id, sql))) {
+          LOG_WARN(" failed to read data", K(ret));
+        } else if (OB_ISNULL(result = res.get_result())) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("failed to get result", K(ret));
+        } else if (OB_FAIL(result->next())) {
+          if (ret == OB_ITER_END) {
+            // mvlog is empty
+            mvlog_empty = true;
+            ret = OB_SUCCESS;
+          } else {
+            LOG_WARN("failed to get next", K(ret));
+          }
+        } else {
+          if (OB_FAIL(result->get_uint(0l, cur_mvlog_max_seqno))) {
+            LOG_WARN("fail to get int_value.", K(ret));
+          } else {
+            LOG_INFO("mvlog max seqno", K(cur_mvlog_max_seqno));
+          }
+        }
+        if (OB_FAIL(result->close())) {
+          LOG_WARN("close result failed", K(ret));
+        }
+      }
+    }
+
+    if (OB_SUCC(ret)) {
+      if (is_total_refresh) {
+        if (OB_FAIL(total_refresh(&trans, exec_tenant_id, cur_mvlog_max_seqno))) {
+          LOG_WARN("total refresh failed", K(ret));
+        }
+      } else {
+        if (!mvlog_empty) {
+          // delta refresh
+
+        }
+      }
+    }
+  }
+
+  // commit transaction or rollback
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(trans.end(true))) {
+      LOG_WARN("fail to commit transaction.", K(ret));
+    }
+  } else {
+    int err = OB_SUCCESS;
+    if (OB_SUCCESS != (err = trans.end(false))) {
+      LOG_WARN("fail to rollback transaction. ", K(err));
     }
   }
   return ret;

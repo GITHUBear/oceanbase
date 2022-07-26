@@ -128,6 +128,19 @@ DEF_SIMPLE_EXECUTOR(ObAddRestoreSource);
 DEF_SIMPLE_EXECUTOR(ObClearRestoreSource);
 DEF_SIMPLE_EXECUTOR(ObTableTTL);
 
+class ObRefreshMaterializedViewExecutor {
+public:
+  ObRefreshMaterializedViewExecutor()
+  {}
+  virtual ~ObRefreshMaterializedViewExecutor()
+  {}
+  int execute(ObExecContext& ctx, ObRefreshMaterializedViewStmt& stmt);
+
+  ObRefreshMaterializedViewStmt* stmt_;
+private:
+  int total_refresh(ObMySQLTransaction* trans, uint64_t exec_tenant_id, uint64_t cur_mvlog_max_seqno);
+};
+
 class ObCancelTaskExecutor {
 public:
   ObCancelTaskExecutor()
