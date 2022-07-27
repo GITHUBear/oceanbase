@@ -139,6 +139,8 @@ public:
   ObRefreshMaterializedViewStmt* stmt_;
 private:
   int total_refresh(ObMySQLTransaction* trans, uint64_t exec_tenant_id, uint64_t cur_mvlog_max_seqno);
+  int delta_refresh(ObMySQLTransaction* trans, /*ObMySQLProxy::MySQLResult& read_result,*/ uint64_t exec_tenant_id, 
+                    uint64_t cur_mvlog_max_seqno, uint64_t applied_seq);
 };
 
 class ObCancelTaskExecutor {

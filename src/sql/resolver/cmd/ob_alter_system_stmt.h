@@ -1276,6 +1276,15 @@ public:
 
 class ObRefreshMaterializedViewStmt : public ObSystemCmdStmt {
 public:
+  struct MvTableSimpleSchema {
+    int func_type_; // 0: simple column, 1-5: SUM/MIN/MAX/AVG/COUNT
+    int dummy_func_col_id_;
+    ObString func_arg_;
+    ObString column_full_name_;
+
+    TO_STRING_KV(K_(func_type), K_(dummy_func_col_id), K_(func_arg), K_(column_full_name));
+  };
+
   ObRefreshMaterializedViewStmt() : ObSystemCmdStmt(stmt::T_REFRESH_MATERIALIZED_VIEW)
   {}
   virtual ~ObRefreshMaterializedViewStmt()
@@ -1292,6 +1301,9 @@ public:
   // TODO: add func flags
   common::ObArray<uint64_t> groupby_idx_;
   common::ObArray<ObString> select_project_strs_;
+  common::ObArray<uint64_t> sum_or_count_col_idx_;
+  common::ObArray<MvTableSimpleSchema> mv_table_cols_;
+  common::ObArray<uint64_t> mv_table_func_col_idx_;
 };
 
 }  // end namespace sql

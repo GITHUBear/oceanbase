@@ -236,7 +236,7 @@ int ObCreateMaterializedViewLogResolver::resolve(const ParseNode& parse_tree)
                 dml_type_column.set_tenant_id(tenant_id);
                 dml_type_column.set_is_hidden(false);
                 dml_type_column.set_column_id(++cur_column_id);
-                dml_type_column.set_data_type(ObUInt64Type);
+                dml_type_column.set_data_type(ObIntType);
                 dml_type_column.set_nullable(false);
                 dml_type_column.set_charset_type(CHARSET_BINARY);
                 dml_type_column.set_collation_type(CS_TYPE_BINARY);

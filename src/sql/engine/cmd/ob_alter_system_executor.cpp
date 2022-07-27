@@ -1965,16 +1965,127 @@ int ObRefreshMaterializedViewExecutor::total_refresh(ObMySQLTransaction* trans, 
               OB_ALL_MV_INFO_DEF_TNAME, 
               stmt_->mv_table_id_, stmt_->mvlog_table_id_, 
               cur_mvlog_max_seqno);
-    // snprintf(sql, OB_MAX_SQL_LENGTH, 
-    //           "UPDATE %s SET applied_seq = %lu WHERE mv_id = %lu AND mvlog_id = %lu",
-    //           OB_ALL_MV_INFO_DEF_TNAME, 
-    //           cur_mvlog_max_seqno,
-    //           stmt_->mv_table_id_, stmt_->mvlog_table_id_);
+    if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+      LOG_WARN("total refresh insert __all_mv_info_def failed", K(ret));
+    } else if (affected_rows != 1) {
+      LOG_WARN("no update happened");
+    }
+  }
+  return ret;
+}
+
+int ObRefreshMaterializedViewExecutor::delta_refresh(ObMySQLTransaction* trans, /*ObMySQLProxy::MySQLResult& read_result,*/ uint64_t exec_tenant_id,
+                                                     uint64_t cur_mvlog_max_seqno, uint64_t applied_seq)
+{
+  int ret = OB_SUCCESS;
+  ObISQLClient* sql_client = trans;
+  SMART_VAR(char[OB_MAX_SQL_LENGTH], sql)
+  {
+    int cur_idx = snprintf(sql, OB_MAX_SQL_LENGTH, 
+                            "INSERT INTO %s.%s SELECT ",
+                            stmt_->database_name_.ptr(), stmt_->mv_table_name_.ptr());
+    for (int64_t i = 0; i < stmt_->mv_table_cols_.count(); ++i) {
+      const ObRefreshMaterializedViewStmt::MvTableSimpleSchema& schema = stmt_->mv_table_cols_.at(i);
+      if (!schema.func_type_) {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                          (i != 0) ? ", ___T1.%s" : "___T1.%s", schema.column_full_name_.ptr());
+      } else {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                          (i != 0) ? ", ___T1.___c%d" : "___T1.___c%d", schema.dummy_func_col_id_);
+      }
+    }
+
+    cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                        " FROM (SELECT ");
+
+    for (int64_t i = 0; i < stmt_->mv_table_cols_.count(); ++i) {
+      const ObRefreshMaterializedViewStmt::MvTableSimpleSchema& schema = stmt_->mv_table_cols_.at(i);
+      if (!schema.func_type_) {
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                            (i != 0) ? ", %s" : "%s", schema.column_full_name_.ptr());
+      } else {
+        // TODO: support other functions
+        switch (schema.func_type_)
+        {
+        case 1:
+          cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                              (i != 0) ? ", SUM(%s * _dml_type) as ___c%d" : "SUM(%s * _dml_type) as ___c%d", 
+                              schema.func_arg_.ptr(), schema.dummy_func_col_id_);
+          break;
+        case 5:
+          cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                              (i != 0) ? ", SUM(_dml_type) as ___c%d" : "SUM(_dml_type) as ___c%d",
+                              schema.dummy_func_col_id_);
+          break;
+        default:
+          break;
+        }
+      }
+    }
+
+    cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH, 
+                        " FROM %s.%s WHERE _seqno > %lu AND _seqno <= %lu GROUP BY ",
+                        stmt_->database_name_.ptr(), stmt_->mvlog_table_name_.ptr(),
+                        applied_seq, cur_mvlog_max_seqno);
+    
+    for (int64_t i = 0; i < stmt_->groupby_idx_.count(); ++i) {
+      const ObString& groupby_str = stmt_->select_project_strs_.at(stmt_->groupby_idx_.at(i));
+      cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                          (i != 0) ? ", %s" : "%s", groupby_str.ptr());
+    }
+
+    cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                        ") as ___T1 ON DUPLICATE KEY UPDATE ");
+    
+    for (int64_t i = 0; i < stmt_->mv_table_func_col_idx_.count(); ++i) {
+      const ObRefreshMaterializedViewStmt::MvTableSimpleSchema& schema = stmt_->mv_table_cols_.at(
+                              stmt_->mv_table_func_col_idx_.at(i));
+      cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                          (i != 0) ? ", %s=%s+___T1.___c%d" : "%s=%s+___T1.___c%d",
+                          schema.column_full_name_.ptr(),
+                          schema.column_full_name_.ptr(),
+                          schema.dummy_func_col_id_);
+    }
+
+    int64_t affected_rows = 0;
+    if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+      LOG_WARN("total refresh do sql failed", K(ret));
+    }
+    
+    snprintf(sql, OB_MAX_SQL_LENGTH, 
+              "UPDATE %s SET applied_seq = %lu WHERE mv_id = %lu AND mvlog_id = %lu",
+              OB_ALL_MV_INFO_DEF_TNAME, 
+              cur_mvlog_max_seqno,
+              stmt_->mv_table_id_, stmt_->mvlog_table_id_);
     if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
       LOG_WARN("total refresh update __all_mv_info_def failed", K(ret));
     } else if (affected_rows != 1) {
       LOG_WARN("no update happened");
     }
+    
+    // common::sqlclient::ObMySQLResult* result = NULL;
+    // if (OB_FAIL(sql_client->read(read_result, exec_tenant_id, sql))) {
+    //   LOG_WARN(" failed to read data", K(ret));
+    // } else if (OB_ISNULL(result = read_result.get_result())) {
+    //   ret = OB_ERR_UNEXPECTED;
+    //   LOG_WARN("failed to get result", K(ret));
+    // } else if (OB_FAIL(result->next())) {
+    //   LOG_WARN("failed to get next", K(ret));
+    // }
+    // int tmp_ret = OB_SUCCESS;
+    // do {
+    //   if (OB_FAIL(tmp_ret)) {
+    //     ret = tmp_ret;
+    //     break;
+    //   }
+    //   // for (int64_t i = 0; i < stmt_->select_project_strs_.count(); ++i) {
+    //   //   if (OB_FAIL)
+    //   // }
+    //   // if (result->get_raw())
+    // } while (OB_SUCC(ret) && OB_ITER_END != (tmp_ret = result->next()));
+    // if (OB_SUCC(ret)) {
+    //   LOG_INFO("select & aggregate on mvlog success");
+    // }
   }
   return ret;
 }
@@ -1985,6 +2096,7 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
   stmt_ = &stmt;
   ObMySQLTransaction trans;
   ObISQLClient* sql_client = &trans;
+  // ObMySQLProxy::MySQLResult* read_result = nullptr;
   common::ObMySQLProxy* sql_proxy = ctx.get_sql_proxy();
   if (OB_ISNULL(sql_proxy)) {
     ret = OB_ERR_UNEXPECTED;
@@ -1997,6 +2109,8 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
     int64_t applied_seq = 0;
     uint64_t cur_mvlog_max_seqno = 0;
     bool mvlog_empty = false;
+    SMART_VAR(ObMySQLProxy::MySQLResult, res)
+    {}
     SMART_VAR(char[OB_MAX_SQL_LENGTH], sql)
     {
       snprintf(sql, OB_MAX_SQL_LENGTH,
@@ -2005,7 +2119,6 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
                 OB_ALL_MV_INFO_DEF_TNAME,
                 stmt.mv_table_id_, stmt.mvlog_table_id_);
       // select __all_mv_info_def
-      SMART_VAR(ObMySQLProxy::MySQLResult, res)
       {
         common::sqlclient::ObMySQLResult* result = NULL;
         // common::ObSQLClientRetryWeak sql_client_retry_weak(sql_client, exec_tenant_id, OB_ALL_MV_INFO_DEF_TID);
@@ -2032,6 +2145,7 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
         if (OB_FAIL(result->close())) {
           LOG_WARN("close result failed", K(ret));
         }
+        res.reset();
       }
 
       snprintf(sql, OB_MAX_SQL_LENGTH,
@@ -2063,7 +2177,9 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
         if (OB_FAIL(result->close())) {
           LOG_WARN("close result failed", K(ret));
         }
+        res.reset();
       }
+      // read_result = &res;
     }
 
     if (OB_SUCC(ret)) {
@@ -2073,8 +2189,16 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
         }
       } else {
         if (!mvlog_empty) {
-          // delta refresh
-
+          if (cur_mvlog_max_seqno < (uint64_t)applied_seq) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("exception: mvlog max seqno is smaller than applied_seq when mvlog is not empty", 
+                      K(cur_mvlog_max_seqno), K(applied_seq), K(ret));
+          } else if (cur_mvlog_max_seqno > applied_seq) {
+            // delta refresh
+            if (OB_FAIL(delta_refresh(&trans, /*res,*/ exec_tenant_id, cur_mvlog_max_seqno, applied_seq))) {
+              LOG_WARN("delta refresh failed", K(ret));
+            }
+          }
         }
       }
     }

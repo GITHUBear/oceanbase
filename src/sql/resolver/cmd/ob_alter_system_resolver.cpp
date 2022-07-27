@@ -4242,7 +4242,7 @@ int ObClearRestoreSourceResolver::resolve(const ParseNode& parse_tree)
   return ret;
 }
 
-int ObRefreshMaterializedViewResolver::trans_func_column_str(const share::schema::ObTableSchema* mvlog_table_schema, const share::schema::ObColumnSchemaV2* column, char*& func_col_str)
+int ObRefreshMaterializedViewResolver::trans_func_column_str(const share::schema::ObTableSchema* mvlog_table_schema, const share::schema::ObColumnSchemaV2* column, char*& func_col_str, int& func_type, ObString& func_arg)
 {
   int ret = OB_SUCCESS;
   // find first '_'
@@ -4260,6 +4260,9 @@ int ObRefreshMaterializedViewResolver::trans_func_column_str(const share::schema
     if (OB_ISNULL(mvlog_table_schema->get_column_schema(column_str.ptr() + idx + 1))) {
       ret = OB_NOT_SUPPORTED;
       LOG_WARN("function arg is not a simple column name", K(ret));
+    } else if (OB_FAIL(ob_write_string(*allocator_, column_str.ptr() + idx + 1, func_arg, true))) { 
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to write func_arg string", K(ret));
     } else {
       // sum/min/max/avg/count
       char tmp[11];
@@ -4270,18 +4273,18 @@ int ObRefreshMaterializedViewResolver::trans_func_column_str(const share::schema
       } else {
         memmove(tmp, column_str.ptr(), idx);
         tmp[idx] = '\0';
-        if (!strcmp(tmp, "SUM") || 
-            !strcmp(tmp, "MIN") || 
-            !strcmp(tmp, "MAX") ||
-            !strcmp(tmp, "AVG") ||
-            !strcmp(tmp, "COUNT")) {
-          is_match = true;
-        } else {
+        func_type = 0;
+        if (!strcmp(tmp, "SUM")) func_type = 1;
+        else if (!strcmp(tmp, "MIN")) func_type = 2;
+        else if (!strcmp(tmp, "MAX")) func_type = 3;
+        else if (!strcmp(tmp, "AVG")) func_type = 4;
+        else if (!strcmp(tmp, "COUNT")) func_type = 5;
+        else {
           ret = OB_NOT_SUPPORTED;
           LOG_WARN("funtion type not support", K(ret));
         }
       }
-      if (OB_SUCC(ret) && is_match) {
+      if (OB_SUCC(ret) && func_type) {
         if (OB_ISNULL(func_col_str = static_cast<char*>(allocator_->alloc(column_str.length() + 2)))) {
           ret = OB_ERR_UNEXPECTED;
           LOG_WARN("fail to alloc str", K(ret));
@@ -4445,6 +4448,7 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
           const ObColumnSchemaV2* column = nullptr;
           ObTableSchema::const_column_iterator iter = mv_table_schema->column_begin();
           ObTableSchema::const_column_iterator end = mv_table_schema->column_end();
+          int dummy_func_id = 0;
           for (; OB_SUCC(ret) && iter != end; ++iter) {
             column = *iter;
             if (OB_ISNULL(column)) {
@@ -4466,6 +4470,13 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
                   // must be group by columns
                   stmt->select_project_strs_.push_back(column_str);
                   stmt->groupby_idx_.push_back(stmt->select_project_strs_.count() - 1);
+                  ObRefreshMaterializedViewStmt::MvTableSimpleSchema schema;
+                  schema.func_type_ = 0;
+                  if (OB_FAIL(ob_write_string(*allocator_, column->get_column_name_str(), schema.column_full_name_, true))) {
+                    ret = OB_ERR_UNEXPECTED;
+                    LOG_WARN("fail to write string", K(ret), K(column->get_column_name_str()));
+                  }
+                  stmt->mv_table_cols_.push_back(schema);
                 }
               }
             } else {
@@ -4473,17 +4484,45 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
                 ObString count_str;
                 count_str.assign_ptr("count(*)", 8);
                 stmt->select_project_strs_.push_back(count_str);
+                stmt->sum_or_count_col_idx_.push_back(stmt->select_project_strs_.count() - 1);
+                ObRefreshMaterializedViewStmt::MvTableSimpleSchema schema;
+                schema.func_type_ = 5;
+                // TODO: currently count() function's arg is ignored.
+                if (OB_FAIL(ob_write_string(*allocator_, "_cnt", schema.column_full_name_, true))) {
+                  ret = OB_ERR_UNEXPECTED;
+                  LOG_WARN("fail to write string", K(ret));
+                }
+                schema.dummy_func_col_id_ = ++dummy_func_id;
+                stmt->mv_table_cols_.push_back(schema);
+                stmt->mv_table_func_col_idx_.push_back(stmt->mv_table_cols_.count() - 1);
               } else {
                 // function column
                 char* func_col = nullptr;
-                if (OB_FAIL(trans_func_column_str(mvlog_table_schema, column, func_col))) {
+                int func_type = 0;
+                ObRefreshMaterializedViewStmt::MvTableSimpleSchema schema;
+                if (OB_FAIL(trans_func_column_str(mvlog_table_schema, column, func_col, func_type, schema.func_arg_))) {
                   ret = OB_NOT_SUPPORTED;
                 } else if (OB_ISNULL(func_col)) {
                   ret = OB_ERR_UNEXPECTED;
                 } else {
-                  ObString func_col_str;
-                  func_col_str.assign_ptr(func_col, strlen(func_col));
-                  stmt->select_project_strs_.push_back(func_col_str);
+                  // Note: only deal with SUM/COUNT
+                  schema.func_type_ = func_type;
+                  if (func_type != 1 && func_type != 5) {
+                    ret = OB_NOT_SUPPORTED;
+                    LOG_WARN("Only SUM or COUNT function is supported now", K(ret));
+                  } else {
+                    ObString func_col_str;
+                    func_col_str.assign_ptr(func_col, strlen(func_col));
+                    stmt->select_project_strs_.push_back(func_col_str);
+                    stmt->sum_or_count_col_idx_.push_back(stmt->select_project_strs_.count() - 1);
+                    if (OB_FAIL(ob_write_string(*allocator_, column->get_column_name_str(), schema.column_full_name_, true))) {
+                      ret = OB_ERR_UNEXPECTED;
+                      LOG_WARN("fail to write string", K(ret), K(column->get_column_name_str()));
+                    }
+                    schema.dummy_func_col_id_ = ++dummy_func_id;
+                    stmt->mv_table_cols_.push_back(schema);
+                    stmt->mv_table_func_col_idx_.push_back(stmt->mv_table_cols_.count() - 1);
+                  }
                 }
               }
             }
