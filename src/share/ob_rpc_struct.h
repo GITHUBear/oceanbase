@@ -997,7 +997,8 @@ public:
         create_mode_(OB_CREATE_TABLE_MODE_STRICT),
         last_replay_log_id_(0),
         is_inner_(false),
-        error_info_()
+        error_info_(),
+        is_create_mv_log_(false)
   {}
   bool is_valid() const;
   virtual bool is_allow_when_upgrade() const;
@@ -1016,7 +1017,10 @@ public:
   // New members of ObCreateTableArg need to pay attention to the implementation of is_allow_when_upgrade
   // mv_log_table_id_ for create materialized view.
   // Send to RootService then set into ObTableSchema when generate_schema is called.
-  uint64_t mv_log_table_id_;
+  uint64_t mv_log_table_id_;   // used for "create mv"
+  // used for "create mv log"
+  bool is_create_mv_log_;
+  uint64_t base_table_id_;
 };
 
 struct ObCreateTableLikeArg : public ObDDLArg {

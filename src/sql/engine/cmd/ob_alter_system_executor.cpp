@@ -2049,7 +2049,7 @@ int ObRefreshMaterializedViewExecutor::delta_refresh(ObMySQLTransaction* trans, 
 
     int64_t affected_rows = 0;
     if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
-      LOG_WARN("total refresh do sql failed", K(ret));
+      LOG_WARN("delta refresh do sql failed", K(ret));
     }
     
     snprintf(sql, OB_MAX_SQL_LENGTH, 
@@ -2058,33 +2058,17 @@ int ObRefreshMaterializedViewExecutor::delta_refresh(ObMySQLTransaction* trans, 
               cur_mvlog_max_seqno,
               stmt_->mv_table_id_, stmt_->mvlog_table_id_);
     if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
-      LOG_WARN("total refresh update __all_mv_info_def failed", K(ret));
+      LOG_WARN("delta refresh update __all_mv_info_def failed", K(ret));
     } else if (affected_rows != 1) {
       LOG_WARN("no update happened");
     }
     
-    // common::sqlclient::ObMySQLResult* result = NULL;
-    // if (OB_FAIL(sql_client->read(read_result, exec_tenant_id, sql))) {
-    //   LOG_WARN(" failed to read data", K(ret));
-    // } else if (OB_ISNULL(result = read_result.get_result())) {
-    //   ret = OB_ERR_UNEXPECTED;
-    //   LOG_WARN("failed to get result", K(ret));
-    // } else if (OB_FAIL(result->next())) {
-    //   LOG_WARN("failed to get next", K(ret));
-    // }
-    // int tmp_ret = OB_SUCCESS;
-    // do {
-    //   if (OB_FAIL(tmp_ret)) {
-    //     ret = tmp_ret;
-    //     break;
-    //   }
-    //   // for (int64_t i = 0; i < stmt_->select_project_strs_.count(); ++i) {
-    //   //   if (OB_FAIL)
-    //   // }
-    //   // if (result->get_raw())
-    // } while (OB_SUCC(ret) && OB_ITER_END != (tmp_ret = result->next()));
-    // if (OB_SUCC(ret)) {
-    //   LOG_INFO("select & aggregate on mvlog success");
+    // delete all rows from mv table with '0' _cnt
+    // snprintf(sql, OB_MAX_SQL_LENGTH,
+    //          "DELETE FROM %s.%s WHERE _cnt=0",
+    //          stmt_->database_name_.ptr(), stmt_->mv_table_name_.ptr());
+    // if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+    //   LOG_WARN("delta refresh delete invalid row failed", K(ret));
     // }
   }
   return ret;

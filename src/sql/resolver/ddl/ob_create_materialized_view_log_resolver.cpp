@@ -63,6 +63,7 @@ int ObCreateMaterializedViewLogResolver::resolve(const ParseNode& parse_tree)
             stmt_ = create_table_stmt;
         }
         ObCreateTableArg& create_arg = create_table_stmt->get_create_table_arg();
+        create_arg.is_create_mv_log_ = true;
         ObTableSchema& table_schema = create_arg.schema_;
         ParseNode* base_table_name_node = parse_tree.children_[BASE_TABLE_NAME_NODE];
         if (OB_ISNULL(base_table_name_node)) {
@@ -90,6 +91,8 @@ int ObCreateMaterializedViewLogResolver::resolve(const ParseNode& parse_tree)
                                                                               false, ObSchemaGetterGuard::ALL_TYPES, base_table_id))) {
                 ret = OB_ERR_UNEXPECTED;
                 LOG_WARN("fail to get table id", K(ret));
+            } else {
+                create_arg.base_table_id_ = base_table_id;
             }
             // 2. set MV Log table name: base_table_name_mvlog
             if (OB_SUCC(ret)) {

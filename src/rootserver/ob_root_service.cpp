@@ -4553,6 +4553,22 @@ int ObRootService::create_table(const ObCreateTableArg& arg, UInt64& table_id)
             K(ret));
       }
     }
+    if (OB_SUCC(ret) && arg.is_create_mv_log_) {
+      ObDDLSQLTransaction trans(schema_service_);
+      if (OB_FAIL(trans.start(&sql_proxy_))) {
+        LOG_WARN("start transaction failed", KR(ret));
+      } else if (OB_FAIL(schema_service->get_table_sql_service().update_data_table_schema_version(
+            trans, arg.base_table_id_))) {
+        LOG_WARN("update base table schema_version failed", K(ret));
+      }
+      if (trans.is_started()) {
+        int commit_ret = trans.end(OB_SUCC(ret));
+        if (OB_SUCCESS != commit_ret) {
+          LOG_WARN("end transaction failed", KR(ret), K(commit_ret));
+          ret = OB_SUCC(ret) ? commit_ret : ret;
+        }
+      }
+    }
     if (OB_ERR_TABLE_EXIST == ret) {
       // create table xx if not exist (...)
       // create or replace view xx as ...
