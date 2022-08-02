@@ -2155,7 +2155,7 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
           if (OB_FAIL(result->get_uint(0l, cur_mvlog_max_seqno))) {
             LOG_WARN("fail to get int_value.", K(ret));
           } else {
-            LOG_INFO("mvlog max seqno", K(cur_mvlog_max_seqno));
+            // LOG_INFO("mvlog max seqno", K(cur_mvlog_max_seqno));
           }
         }
         if (OB_FAIL(result->close())) {

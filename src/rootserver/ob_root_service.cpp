@@ -4555,7 +4555,7 @@ int ObRootService::create_table(const ObCreateTableArg& arg, UInt64& table_id)
     }
     if (OB_SUCC(ret) && arg.is_create_mv_log_) {
       ObDDLSQLTransaction trans(schema_service_);
-      if (OB_FAIL(trans.start(&sql_proxy_))) {
+      if (OB_FAIL(trans.start(&(ddl_service_.get_sql_proxy())))) {
         LOG_WARN("start transaction failed", KR(ret));
       } else if (OB_FAIL(schema_service->get_table_sql_service().update_data_table_schema_version(
             trans, arg.base_table_id_))) {

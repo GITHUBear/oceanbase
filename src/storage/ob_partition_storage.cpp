@@ -1380,7 +1380,7 @@ int ObPartitionStorage::insert_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
           // forcely change run_ctx.col_descs_
           ObColDescIArray* non_cont_col_descs_ptr = const_cast<ObColDescIArray*>(run_ctx.col_descs_);
           non_cont_col_descs_ptr->at(rows[0].get_count()).col_id_ = run_ctx.col_descs_->at(rows[0].get_count() - 1).col_id_ + 1;
-          STORAGE_LOG(INFO, "mvlog force change run_ctx.col_descs_", K(*(run_ctx.col_descs_)));
+          // STORAGE_LOG(INFO, "mvlog force change run_ctx.col_descs_", K(*(run_ctx.col_descs_)));
 
           if (OB_ISNULL(new_rows_ptr = work_allocator.alloc(row_count * sizeof(ObNewRow)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -1449,7 +1449,7 @@ int ObPartitionStorage::insert_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
                 }
               }
             }
-            STORAGE_LOG(INFO, "mvlog create new insert row", K(new_rows[0]));
+            // STORAGE_LOG(INFO, "mvlog create new insert row", K(new_rows[0]));
           }
         }
       }

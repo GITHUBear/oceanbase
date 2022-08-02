@@ -1394,7 +1394,7 @@ int ObTableModify::init_dml_param_se(ObExecContext& ctx, const uint64_t table_id
       autoinc_params.at(autoinc_params.count() - 1).is_mvlog_) {
     dml_param.is_mvlog_autoinc_set_ = true;
     dml_param.mvlog_autoinc_param_ = autoinc_params.at(autoinc_params.count() - 1);
-    LOG_INFO("mvlog set dml_param mvlog_autoinc_param", K(dml_param.mvlog_autoinc_param_));
+    // LOG_INFO("mvlog set dml_param mvlog_autoinc_param", K(dml_param.mvlog_autoinc_param_));
   }
   return ret;
 }
