@@ -767,6 +767,10 @@ int ObCmdExecutor::execute(ObExecContext& ctx, ObICmd& cmd)
       DEFINE_EXECUTE_CMD(ObRefreshMaterializedViewStmt, ObRefreshMaterializedViewExecutor);
       break;
     }
+    case stmt::T_TRUNCATE_MATERIALIZED_VIEW_LOG: {
+      DEFINE_EXECUTE_CMD(ObTruncateMaterializedViewLogStmt, ObTruncateMaterializedViewLogExecutor);
+      break;
+    }
     case stmt::T_CS_DISKMAINTAIN:
     case stmt::T_TABLET_CMD:
     case stmt::T_SWITCH_ROOTSERVER:

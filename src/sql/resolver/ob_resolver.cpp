@@ -247,6 +247,10 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode& parse_tree, ObS
         REGISTER_STMT_RESOLVER(RefreshMaterializedView);
         break;
       }
+      case T_TRUNCATE_MATERIALIZED_VIEW_LOG: {
+        REGISTER_STMT_RESOLVER(TruncateMaterializedViewLog);
+        break;
+      }
       case T_ALTER_VIEW: {
 #if 0
         ObAlterViewResolver stmt_resolver(params_);

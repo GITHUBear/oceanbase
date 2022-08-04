@@ -2153,7 +2153,10 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
           }
         } else {
           if (OB_FAIL(result->get_uint(0l, cur_mvlog_max_seqno))) {
-            LOG_WARN("fail to get int_value.", K(ret));
+            // LOG_WARN("fail to get int_value.", K(ret));
+            mvlog_empty = true;
+            cur_mvlog_max_seqno = 0;
+            ret = OB_SUCCESS;
           } else {
             // LOG_INFO("mvlog max seqno", K(cur_mvlog_max_seqno));
           }
@@ -2188,6 +2191,46 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
     }
   }
 
+  // commit transaction or rollback
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(trans.end(true))) {
+      LOG_WARN("fail to commit transaction.", K(ret));
+    }
+  } else {
+    int err = OB_SUCCESS;
+    if (OB_SUCCESS != (err = trans.end(false))) {
+      LOG_WARN("fail to rollback transaction. ", K(err));
+    }
+  }
+  return ret;
+}
+
+int ObTruncateMaterializedViewLogExecutor::execute(ObExecContext& ctx, ObTruncateMaterializedViewLogStmt& stmt)
+{
+  int ret = OB_SUCCESS;
+  ObMySQLTransaction trans;
+  ObISQLClient* sql_client = &trans;
+  common::ObMySQLProxy* sql_proxy = ctx.get_sql_proxy();
+  if (OB_ISNULL(sql_proxy)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("sql_proxy is null", K(ret));
+  } else if (OB_FAIL(trans.start(sql_proxy, true))) {
+    LOG_WARN("failed to start transaction", K(ret));
+  } else {
+    SMART_VAR(char[OB_MAX_SQL_LENGTH], sql)
+    {
+      snprintf(sql, OB_MAX_SQL_LENGTH,
+               "DELETE FROM %s.%s WHERE _seqno<=("
+               "SELECT MIN(applied_seq) FROM %s WHERE mvlog_id=%lu)",
+               stmt.database_name_.ptr(), stmt.mvlog_table_name_.ptr(),
+               OB_ALL_MV_INFO_DEF_TNAME, stmt.mvlog_table_id_);
+      uint64_t exec_tenant_id = GET_MY_SESSION(ctx)->get_effective_tenant_id();
+      int64_t affected_rows = 0;
+      if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+        LOG_WARN("truncate mvlog table failed", K(stmt.mvlog_table_name_), K(ret));
+      }
+    }
+  }
   // commit transaction or rollback
   if (OB_SUCC(ret)) {
     if (OB_FAIL(trans.end(true))) {
