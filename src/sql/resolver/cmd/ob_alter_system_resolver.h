@@ -154,6 +154,19 @@ DEF_SIMPLE_CMD_RESOLVER(ObBackupBackupPieceResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObAddRestoreSourceResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObClearRestoreSourceResolver);
 
+class ObTruncateMaterializedViewLogResolver : public ObSystemCmdResolver {
+public:
+  ObTruncateMaterializedViewLogResolver(ObResolverParams& params) : ObSystemCmdResolver(params)
+  {}
+  virtual ~ObTruncateMaterializedViewLogResolver()
+  {}
+  virtual int resolve(const ParseNode& parse_tree);
+private:
+  // int trans_func_column_str(const share::schema::ObTableSchema* mvlog_table_schema, const share::schema::ObColumnSchemaV2* column, char*& func_col_str, int& func_type, ObString& func_arg);
+  // int get_base_table_name(const ObString& mvlog_name_str, ObString& base_table_name);
+  
+};
+
 class ObRefreshMaterializedViewResolver : public ObSystemCmdResolver {
 public:
   ObRefreshMaterializedViewResolver(ObResolverParams& params) : ObSystemCmdResolver(params)

@@ -4534,5 +4534,73 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
   return ret;
 }
 
+int ObTruncateMaterializedViewLogResolver::resolve(const ParseNode& parse_tree)
+{
+  int ret = OB_SUCCESS;
+  if (OB_UNLIKELY(T_TRUNCATE_MATERIALIZED_VIEW_LOG != parse_tree.type_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("type is not T_TRUNCATE_MATERIALIZED_VIEW_LOG", "type", get_type_name(parse_tree.type_));
+  } else if (OB_UNLIKELY(1 != parse_tree.num_child_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected num_child of parse_tree", K(parse_tree.num_child_), K(ret));
+  } else if (OB_ISNULL(parse_tree.children_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("children should not be NULL", K(ret));
+  } else if (OB_ISNULL(allocator_)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("allocator_ should not be NULL", K(ret));
+  } else if (OB_ISNULL(session_info_)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("session_info_ should not be NULL", K(ret));
+  } else if (OB_ISNULL(params_.query_ctx_)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("query_ctx should not be NULL", K(ret));
+  } else {
+    ObSchemaChecker* schema_checker = params_.schema_checker_;
+    ObTruncateMaterializedViewLogStmt* stmt = NULL;
+    if (OB_ISNULL(stmt = create_stmt<ObTruncateMaterializedViewLogStmt>())) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_ERROR("create ObTruncateMaterializedViewLogStmt failed", K(ret));
+    } else {
+      stmt_ = stmt;
+    }
+    if (OB_SUCC(ret)) {
+      ParseNode* base_table_ident_node = parse_tree.children_[0];
+      char* mvlog_name_ptr = nullptr;
+      if (OB_ISNULL(mvlog_name_ptr = static_cast<char*>(allocator_->alloc(base_table_ident_node->str_len_ + 7)))) {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_ERROR("Failed to malloc new table name string", K(ret));
+      } else {
+        memmove(mvlog_name_ptr, base_table_ident_node->str_value_, base_table_ident_node->str_len_);
+        memmove(mvlog_name_ptr + base_table_ident_node->str_len_, "_mvlog", 6);
+        mvlog_name_ptr[base_table_ident_node->str_len_ + 6] = '\0';
+        stmt->mvlog_table_name_.assign_ptr(mvlog_name_ptr, base_table_ident_node->str_len_ + 6);
+        const uint64_t tenant_id = session_info_->get_effective_tenant_id();
+        ObString database_name = session_info_->get_database_name();
+        uint64_t database_id = 0;
+        bool mv_log_exists = false;
+        if (OB_FAIL(schema_checker->get_database_id(tenant_id, database_name, database_id))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to get database id", K(ret));
+        } else if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_id, stmt->mvlog_table_name_, false, mv_log_exists))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to check table exists", K(ret));
+        } else if (!mv_log_exists) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_WARN("mvlog table not found", K(ret));
+        } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_id, stmt->mvlog_table_name_,
+                                      false, ObSchemaGetterGuard::ALL_TYPES, stmt->mvlog_table_id_))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to get table id", K(ret));
+        } else if (OB_FAIL(ob_write_string(*allocator_, database_name, stmt->database_name_, true))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to write string", K(ret), K(database_name));
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 }  // end namespace sql
 }  // end namespace oceanbase

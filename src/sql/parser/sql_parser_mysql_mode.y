@@ -11669,6 +11669,11 @@ ALTER SYSTEM REFRESH MATERIALIZED VIEW view_name
   malloc_non_terminal_node($$, result->malloc_pool_, T_REFRESH_MATERIALIZED_VIEW, 1, $6);
 }
 |
+ALTER SYSTEM TRUNCATE MATERIALIZED VIEW LOG ON relation_name
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_TRUNCATE_MATERIALIZED_VIEW_LOG, 1, $8);
+}
+|
 ALTER SYSTEM opt_set alter_system_set_parameter_actions
 {
   (void)$3;

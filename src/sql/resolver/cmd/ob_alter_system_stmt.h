@@ -1306,6 +1306,17 @@ public:
   common::ObArray<uint64_t> mv_table_func_col_idx_;
 };
 
+class ObTruncateMaterializedViewLogStmt : public ObSystemCmdStmt {
+public:
+  ObTruncateMaterializedViewLogStmt() : ObSystemCmdStmt(stmt::T_TRUNCATE_MATERIALIZED_VIEW_LOG)
+  {}
+  virtual ~ObTruncateMaterializedViewLogStmt()
+  {}
+  ObString database_name_;
+  ObString mvlog_table_name_;
+  uint64_t mvlog_table_id_;
+};
+
 }  // end namespace sql
 }  // end namespace oceanbase
 
