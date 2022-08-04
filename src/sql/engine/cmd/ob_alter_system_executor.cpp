@@ -2153,10 +2153,14 @@ int ObRefreshMaterializedViewExecutor::execute(ObExecContext& ctx, ObRefreshMate
           }
         } else {
           if (OB_FAIL(result->get_uint(0l, cur_mvlog_max_seqno))) {
-            // LOG_WARN("fail to get int_value.", K(ret));
-            mvlog_empty = true;
-            cur_mvlog_max_seqno = 0;
-            ret = OB_SUCCESS;
+            if (ret == OB_ERR_NULL_VALUE) {
+              // aggregate func on table returns NULL value
+              mvlog_empty = true;
+              cur_mvlog_max_seqno = 0;
+              ret = OB_SUCCESS;
+            } else {
+              LOG_WARN("fail to get int_value.", K(ret));
+            }
           } else {
             // LOG_INFO("mvlog max seqno", K(cur_mvlog_max_seqno));
           }
