@@ -724,6 +724,43 @@ int ObPartitionStorage::delete_row(ObDMLRunningCtx& run_ctx, RowReshape*& row_re
   return ret;
 }
 
+int ObPartitionStorage::generate_autoinc_value(const ObDMLBaseParam &dml_param, uint64_t &inc_value)
+{
+  int ret = OB_SUCCESS;
+  ObAutoincrementService &auto_service = ObAutoincrementService::get_instance();
+  if (dml_param.is_mvlog_autoinc_set_) {
+    AutoincParam *autoinc_param = const_cast<AutoincParam*>(&(dml_param.mvlog_autoinc_param_));
+    if (OB_ISNULL(autoinc_param)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to get autoinc param", K(ret));
+    } else if (OB_FAIL(auto_service.sync_insert_value_global(*autoinc_param))) {
+      LOG_WARN("fail to sync insert value", K(ret));
+    } else {
+      CacheHandle *&cache_handle = autoinc_param->cache_handle_;
+      if (OB_ISNULL(cache_handle)) {
+        if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
+          LOG_WARN("fail to get auto increment handle", K(ret));
+        } else if (OB_ISNULL(cache_handle)) {
+          LOG_WARN("get null autoinc handle", K(ret));
+        }
+      }
+      if (OB_SUCC(ret)) {
+        if (OB_FAIL(cache_handle->next_value(inc_value))) {
+          LOG_WARN("fail to get pk increment value for mvlog rows", K(ret));
+          auto_service.release_handle(cache_handle);
+          ++autoinc_param->autoinc_intervals_count_;
+          if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
+            LOG_WARN("fail to get autoinc handle", K(ret));
+          } else if (OB_FAIL(cache_handle->next_value(inc_value))) {
+            LOG_WARN("fail to get pk increment value");
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 int ObPartitionStorage::delete_row(
     const ObStoreCtx& ctx, const ObDMLBaseParam& dml_param, const ObIArray<uint64_t>& column_ids, const ObNewRow& row)
 
@@ -796,19 +833,134 @@ int ObPartitionStorage::delete_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
       STORAGE_LOG(WARN, "column_ids illegal", K(ret));
 #endif
     }
+    ObIAllocator &work_allocator = run_ctx.allocator_;
+    STORAGE_LOG(INFO, "inspect delete col_descs_", K(run_ctx.col_descs_->count()), K(*run_ctx.col_descs_), K(dml_param.mvlog_table_id_));
     // delete table row and index rows
     while (OB_SUCC(ret) && OB_SUCC(row_iter->get_next_row(row))) {
-      if (ObTimeUtility::current_time() > run_ctx.dml_param_.timeout_) {
-        ret = OB_TIMEOUT;
-        int64_t cur_time = ObTimeUtility::current_time();
-        STORAGE_LOG(WARN, "query timeout", K(cur_time), K(run_ctx.dml_param_), K(ret));
-      } else if (OB_ISNULL(row)) {
-        ret = OB_ERR_UNEXPECTED;
-        STORAGE_LOG(WARN, "get next row from iterator failed", KP(row), K(ret));
-      } else if (OB_FAIL(delete_row(run_ctx, row_reshape, *row))) {
-        STORAGE_LOG(WARN, "fail to delete row", K(pkey_), K(row), K(ret));
-      } else {
-        ++afct_num;
+      if (dml_param.mvlog_table_id_ == dml_param.table_param_->get_data_table().get_table_id()) {
+        ObColDescIArray *mutable_col_desc = const_cast<ObColDescIArray*>(run_ctx.col_descs_);
+        // TODO(wendongbo): magic number... don't do this any more
+        int mutable_col_index = row->get_count() - 3;
+        uint64_t new_col_id = run_ctx.col_descs_->at(mutable_col_index - 1).col_id_ + 1; // col_id increment
+        mutable_col_desc->at(mutable_col_index).col_id_ = new_col_id;
+        // TODO(wendongbo): can we set new_col_id only once?
+
+        // TODO(wendongbo): opt this code block
+        int row_count = 1;
+        void *new_row_buf = work_allocator.alloc(sizeof(row_count * sizeof(ObNewRow)));
+        ObNewRow *new_row = NULL;
+        if (OB_ISNULL(new_row_buf)) {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          STORAGE_LOG(WARN, "fail to allocate for new row", K(ret));
+        } else {
+          new_row = new (new_row_buf) ObNewRow[row_count];
+        }
+
+        int64_t old_col_cnt = row->get_count() - 3;  // TODO(wendongbo): of course we should not use this magic number
+        int64_t new_col_cnt = run_ctx.col_descs_->count();
+        void *new_cells_buf = work_allocator.alloc(new_col_cnt * sizeof(ObObj));
+        if (OB_FAIL(ret)) {
+          // do nothing
+        } else if (OB_ISNULL(new_row_buf)) {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          STORAGE_LOG(WARN, "fail to allocate for new row", K(ret));
+        } else {
+          new_row->cells_ = new (static_cast<char*>(new_cells_buf)) common::ObObj[new_col_cnt];
+          new_row->count_ = new_col_cnt;
+          new_row->projector_ = NULL;
+          new_row->projector_size_ = 0;
+          uint64_t pk_increment_value = 0;
+          
+          // TODO(wendongbo); copy auto increment service logic to generate pk increment value
+          generate_autoinc_value(dml_param, pk_increment_value);
+
+          new_row->cells_[0].set_uint(ObUInt64Type, pk_increment_value);
+          for (int64_t i = 1; i <= old_col_cnt; ++i) { // TODO(wendongbo): old count we get is also 7
+            new_row->cells_[i] = row->cells_[i];
+            LOG_INFO("try to inspect row cell type", K(i), K(new_row->cells_[i].get_type()));
+          }
+
+          // set DELETE dml_type
+          new_row->cells_[old_col_cnt + 1].set_int(ObIntType, -1);
+          // set _seqno
+          new_row->cells_[old_col_cnt + 2].set_uint(ObUInt64Type, pk_increment_value);
+
+          // build new insert run_ctx to insert rows into mvlog table
+          ObDMLRunningCtx insert_run_ctx(ctx, dml_param, ctx.mem_ctx_->get_query_allocator(), T_DML_INSERT);
+          const ObRelativeTable &data_table = run_ctx.relative_tables_.data_table_;
+          ObRowsInfo rows_info;
+          ObStoreRow *tbl_rows = NULL;
+          void *tbl_rows_buf = NULL;
+          
+          if(OB_FAIL(insert_run_ctx.init(&column_ids, NULL, true, schema_service_, store_))) {
+            ret = OB_ERR_UNEXPECTED;
+            STORAGE_LOG(WARN, "fail to init insert_run_ctx");
+          } else if (OB_ISNULL((tbl_rows_buf = work_allocator.alloc(sizeof(ObStoreRow))))) {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+            STORAGE_LOG(ERROR, "fail to allocate memory", K(ret));
+          } else {
+            tbl_rows = new (tbl_rows_buf) ObStoreRow[1];
+            tbl_rows->flag_ = ObActionFlag::OP_ROW_EXIST;
+            tbl_rows->set_dml(T_DML_INSERT);
+          }
+
+          // TODO(wendongbo): flush insert_run_ctx col_descs_
+          ObColDescIArray *mutable_col_desc = const_cast<ObColDescIArray*>(insert_run_ctx.col_descs_);
+          // TODO(wendongbo): magic number... don't do this any more
+          int mutable_col_index = row->get_count() - 3;
+          uint64_t new_col_id = insert_run_ctx.col_descs_->at(mutable_col_index - 1).col_id_ + 1; // col_id increment
+          mutable_col_desc->at(mutable_col_index).col_id_ = new_col_id;      
+
+          RowReshape *row_reshape_ins = NULL;
+          if (OB_FAIL(ret)) {
+            // do nothing
+          } else if(OB_FAIL(rows_info.init(data_table, ctx, *insert_run_ctx.col_descs_))) {
+            STORAGE_LOG(WARN, "init rows info fail");
+          } else if(OB_FAIL(malloc_rows_reshape_if_need(work_allocator,
+                      *insert_run_ctx.col_descs_,
+                      1,
+                      insert_run_ctx.relative_tables_.data_table_,
+                      dml_param.sql_mode_,
+                      row_reshape_ins))) {
+            STORAGE_LOG(WARN, "malloc rows reshape fail");
+          }
+
+          int64_t insert_afct_num = 0;
+          int64_t dup_num = 0;
+          if (OB_FAIL(ret)) {
+            STORAGE_LOG(WARN, "can not start insert for mvlog", K(ret));
+          } else if (OB_FAIL(insert_rows_(insert_run_ctx, new_row, 1, rows_info, tbl_rows, row_reshape_ins, insert_afct_num, dup_num))) {
+            LOG_WARN("fail to insert rows into mvlog table");
+          }
+
+          if (OB_NOT_NULL(new_row_buf)) {
+            work_allocator.free(new_row_buf);
+          }
+          if (OB_NOT_NULL(new_cells_buf)) {
+            work_allocator.free(new_cells_buf);
+          }
+          if (OB_NOT_NULL(tbl_rows_buf)) {
+            work_allocator.free(tbl_rows_buf);
+          }
+          // LOG_INFO("inspect unfree pointer", K(new_row_buf), K(new_cells_buf), K(tbl_rows_buf)); // TODO(wendongbo): maybe mem leak
+          free_row_reshape(run_ctx.allocator_, row_reshape_ins, 1);
+        }
+        // TODO(wendongbo): opt this code block
+      }
+
+      else {
+        if (ObTimeUtility::current_time() > run_ctx.dml_param_.timeout_) {
+          ret = OB_TIMEOUT;
+          int64_t cur_time = ObTimeUtility::current_time();
+          STORAGE_LOG(WARN, "query timeout", K(cur_time), K(run_ctx.dml_param_), K(ret));
+        } else if (OB_ISNULL(row)) {
+          ret = OB_ERR_UNEXPECTED;
+          STORAGE_LOG(WARN, "get next row from iterator failed", KP(row), K(ret));
+        } else if (OB_FAIL(delete_row(run_ctx, row_reshape, *row))) {
+          STORAGE_LOG(WARN, "fail to delete row", K(pkey_), K(row), K(ret));
+        } else {
+          ++afct_num;
+        }
       }
     }
     if (OB_ITER_END == ret) {
@@ -818,7 +970,7 @@ int ObPartitionStorage::delete_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
       affected_rows = afct_num;
       EVENT_ADD(STORAGE_DELETE_ROW_COUNT, afct_num);
     }
-    free_row_reshape(run_ctx.allocator_, row_reshape, 1);
+    // free_row_reshape(run_ctx.allocator_, row_reshape, 1);  // TODO(wendongbo): do we still need it?
   }
 
   return ret;
@@ -1402,39 +1554,8 @@ int ObPartitionStorage::insert_rows(const ObStoreCtx& ctx, const ObDMLBaseParam&
                 new_rows[i].projector_size_ = 0;
                 // 0. pk_increment
                 uint64_t pk_increment_value = 0;
-                ObAutoincrementService& auto_service = ObAutoincrementService::get_instance();
-                if (dml_param.is_mvlog_autoinc_set_) {
-                  AutoincParam* autoinc_param = const_cast<AutoincParam*>(&(dml_param.mvlog_autoinc_param_));
-                  if (OB_ISNULL(autoinc_param)) {
-                    ret = OB_ERR_UNEXPECTED;
-                    LOG_WARN("should find auto-increment param", K(ret));
-                  } else if (OB_FAIL(auto_service.sync_insert_value_global(*autoinc_param))) {
-                    LOG_WARN("failed to sync insert value globally", K(ret));
-                  }
-                  if (OB_SUCC(ret)) {
-                    CacheHandle*& cache_handle = autoinc_param->cache_handle_;
-                    if (OB_ISNULL(cache_handle)) {
-                      if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
-                        LOG_WARN("failed to get auto_increment handle", K(ret));
-                      } else if (OB_ISNULL(cache_handle)) {
-                        ret = OB_ERR_UNEXPECTED;
-                        LOG_WARN("Error unexpceted", K(ret), K(cache_handle));
-                      }
-                    }
-                    if (OB_SUCC(ret)) {
-                      if (OB_FAIL(cache_handle->next_value(pk_increment_value))) {
-                        LOG_DEBUG("failed to get auto_increment value", K(ret), K(pk_increment_value));
-                        auto_service.release_handle(cache_handle);
-                        ++autoinc_param->autoinc_intervals_count_;
-                        if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
-                          LOG_WARN("failed to get auto_increment handle", K(ret));
-                        } else if (OB_FAIL(cache_handle->next_value(pk_increment_value))) {
-                          LOG_WARN("failed to get auto_increment value", K(ret));
-                        }
-                      }
-                    }
-                  }
-                }
+                generate_autoinc_value(dml_param, pk_increment_value);
+                
                 if (OB_SUCC(ret)) {
                   // LOG_INFO("mvlog auto_service get next value", K(pk_increment_value));
                   new_rows[i].cells_[0].set_uint(ObUInt64Type, pk_increment_value);

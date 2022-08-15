@@ -706,6 +706,8 @@ private:
       ObRelativeTable &relative_table, const common::ObNewRow &new_row);
   int check_new_row_shadow_pk(
       const common::ObIArray<uint64_t> &column_ids, ObRelativeTable &data_table, const common::ObNewRow &new_row);
+  
+  int generate_autoinc_value(const ObDMLBaseParam &dml_param, uint64_t &inc_value);
   // disallow copy;
   DISALLOW_COPY_AND_ASSIGN(ObPartitionStorage);
 
