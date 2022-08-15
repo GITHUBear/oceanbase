@@ -252,6 +252,7 @@ int ObStaticEngineCG::check_expr_columnlized(const ObRawExpr* expr)
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("expr is null", K(ret));
   } else if (expr->is_const_expr() || expr->has_const_or_const_expr_flag() || expr->has_flag(IS_PSEUDO_COLUMN) ||
+             expr->has_hidden_mvlog_column_flag() || 
              T_PDML_PARTITION_ID == expr->get_expr_type()  // PDML partition_id is pseudo column
              || T_QUESTIONMARK == expr->get_expr_type() || T_EXEC_VAR == expr->get_expr_type() ||
              T_CTE_SEARCH_COLUMN == expr->get_expr_type() || T_CTE_CYCLE_COLUMN == expr->get_expr_type() ||

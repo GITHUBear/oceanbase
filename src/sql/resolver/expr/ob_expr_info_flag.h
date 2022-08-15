@@ -116,6 +116,8 @@ enum ObExprInfoFlag {
   IS_SELECT_REF,  // expr is refer to select item
   IS_SHARED_REF,
   IS_OP_OPERAND_IMPLICIT_CAST,  // is implicit cast added for operand casting (add in type deducing)
+
+  IS_HIDDEN_MVLOG_COLUMN,
 };
 
 #define IS_INFO_MASK_BEGIN IS_CONST

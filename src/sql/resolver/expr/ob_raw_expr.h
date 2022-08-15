@@ -1309,6 +1309,7 @@ public:
   int clear_flag(int32_t flag);
   bool has_const_or_const_expr_flag() const;
   bool has_hierarchical_query_flag() const;
+  bool has_hidden_mvlog_column_flag() const ;
   const ObExprInfo &get_expr_info() const;
   ObExprInfo &get_expr_info();
 
@@ -1604,6 +1605,11 @@ inline bool ObRawExpr::has_hierarchical_query_flag() const
   return has_flag(CNT_PRIOR) || has_flag(CNT_LEVEL) || has_flag(CNT_CONNECT_BY_ISLEAF) ||
          has_flag(CNT_CONNECT_BY_ISCYCLE) || has_flag(CNT_CONNECT_BY_ROOT) || has_flag(CNT_SYS_CONNECT_BY_PATH);
   ;
+}
+
+inline bool ObRawExpr::has_hidden_mvlog_column_flag() const 
+{
+  return has_flag(IS_HIDDEN_MVLOG_COLUMN);
 }
 
 inline int ObRawExpr::add_flags(const ObExprInfo &flags)

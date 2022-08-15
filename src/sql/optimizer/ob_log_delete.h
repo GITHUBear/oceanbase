@@ -13,6 +13,7 @@
 #ifndef _OB_LOG_DELETE_H
 #define _OB_LOG_DELETE_H 1
 #include "ob_log_del_upd.h"
+#include "sql/resolver/dml/ob_delete_stmt.h"
 
 namespace oceanbase {
 namespace sql {
@@ -31,6 +32,7 @@ public:
    *  2. columns in some index(no duplicate)
    */
   virtual int allocate_expr_pre(ObAllocExprContext& ctx) override;
+  virtual int allocate_expr_post(ObAllocExprContext& ctx) override;
 
   virtual int est_cost() override;
 
