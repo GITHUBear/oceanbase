@@ -119,6 +119,10 @@ int ObDeleteResolver::resolve(const ParseNode& parse_tree)
     }
   }
 
+  if (OB_FAIL(resolve_mvlog_table(*table_node))) {
+    LOG_WARN("fail to resolve delete stmt with mvlog table", K(ret));
+  }
+
   if (OB_SUCC(ret)) {
     if (OB_FAIL(delete_stmt->check_dml_need_filter_null())) {
       LOG_WARN("failed to check dml need filter null", K(ret));
@@ -546,5 +550,189 @@ int ObDeleteResolver::try_add_rowid_column_to_stmt(const TableItem& table_item)
   return ret;
 }
 
+int ObDeleteResolver::save_mvlog_autoinc_params(uint64_t mvlog_table_id) 
+{
+  int ret = OB_SUCCESS;
+  ObDeleteStmt *delete_stmt = get_delete_stmt();
+  const ObTableSchema *table_schema = NULL;
+  if (OB_ISNULL(delete_stmt) || OB_ISNULL(schema_checker_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to get delete stmt and schema checker", K(ret), K(delete_stmt), K(schema_checker_));
+  } else if (OB_FAIL(schema_checker_->get_table_schema(mvlog_table_id, table_schema))) {
+    LOG_WARN("fail to get table schema", K(ret));
+  } else if (OB_ISNULL(table_schema)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table schema is null", K(ret));
+  } else {
+    const ObColumnSchemaV2 *pk_col = table_schema->get_column_schema(OB_HIDDEN_PK_INCREMENT_COLUMN_ID);
+    if (OB_ISNULL(pk_col)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to get mvlog auto increment pk_col", K(pk_col));
+    } else if (!pk_col->is_autoincrement()) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("mvlog pk_col is not auto increasing", K(pk_col->is_autoincrement()));
+    } else {
+      AutoincParam param;
+      param.tenant_id_ = params_.session_info_->get_effective_tenant_id();
+      param.autoinc_table_id_ = mvlog_table_id;
+      param.autoinc_first_part_num_ = table_schema->get_first_part_num();
+      param.autoinc_table_part_num_ = table_schema->get_all_part_num();
+      param.autoinc_col_id_ = pk_col->get_column_id();
+      param.part_level_ = table_schema->get_part_level();
+      ObObjType column_type = table_schema->get_column_schema(pk_col->get_column_id())->get_data_type();
+      param.autoinc_col_type_ = column_type;
+      param.autoinc_desired_count_ = 0;
+      param.autoinc_increment_ = 1;
+      param.autoinc_offset_ = 1;
+      param.part_value_no_order_ = true;
+      param.autoinc_col_index_ = 0;
+      param.total_value_count_ = 1;
+      param.is_mvlog_ = true;
+      if (OB_FAIL(delete_stmt->add_autoinc_param(param))) {
+        LOG_WARN("fail to push back autoinc param", K(ret));
+      }
+    }
+  }
+  return ret;
+}
+
+int ObDeleteResolver::resolve_mvlog_table(const ParseNode& table_node) {
+  int ret = OB_SUCCESS;
+  bool mvlog_is_exist = false;
+  bool base_is_exist = false;
+  ObSchemaChecker *schema_checker = params_.schema_checker_;  // TODO: use which schema_checker?
+  ObDeleteStmt *delete_stmt = get_delete_stmt();
+  const ParseNode *org_node = NULL;
+  const ParseNode *rel_factor_node = NULL;
+  uint64_t mvlog_table_id = 0;
+  uint64_t tenant_id = 0;
+  ObString db_name;
+  ObString base_table_name;
+  ObString mvlog_name;
+
+  // TODO(wendongbo): use meaningful index to check children_ nodes
+  if (OB_ISNULL(table_node.children_[1]) || OB_ISNULL(org_node = table_node.children_[1]->children_[0])) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("org_node is null");
+  } else if (OB_ISNULL(rel_factor_node = org_node->children_[0])) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("relation_factor_node is null");
+  } else if (OB_ISNULL(session_info_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("session info is null");
+  } else if (OB_ISNULL(delete_stmt) || OB_ISNULL(schema_checker_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("delete stmt is null", K(delete_stmt), K(schema_checker_));
+  } else {
+    tenant_id = session_info_->get_effective_tenant_id();
+    db_name = session_info_->get_database_name();
+
+    // TODO(wendongbo): opt mvlog table name concatenate, eliminate magict strlen number, etc.
+    base_table_name.assign_ptr(rel_factor_node->str_value_, rel_factor_node->str_len_);
+    char *mvlog_str = static_cast<char*>(params_.allocator_->alloc(rel_factor_node->str_len_ + 7));
+    memmove(mvlog_str, rel_factor_node->str_value_, rel_factor_node->str_len_);
+    memmove(mvlog_str + rel_factor_node->str_len_, "_mvlog\0", 7);
+    mvlog_name.assign_ptr(mvlog_str, rel_factor_node->str_len_ + 6);
+  }
+
+  // check mvlog and base table existence 
+  if (OB_FAIL(ret)) {
+    // do nothing
+  } else if (OB_FAIL(schema_checker->check_table_exists(tenant_id, db_name, mvlog_name, false, mvlog_is_exist))){
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to check mvlog table existence", K(tenant_id), K(db_name), K(mvlog_name));
+  } else if (!mvlog_is_exist) {
+    // no mvlog, do nothing
+    LOG_TRACE("mvlog table not exist");
+  } else if (OB_FAIL(schema_checker->check_table_exists(tenant_id, db_name, base_table_name, false, base_is_exist))) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to check base table existence", K(tenant_id), K(db_name), K(base_table_name));
+  } else if (!base_is_exist) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("base table not exist", K(tenant_id), K(db_name), K(base_table_name));
+  } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(
+        tenant_id,
+        db_name, 
+        mvlog_name, 
+        false, 
+        ObSchemaGetterGuard::ALL_TYPES, 
+        mvlog_table_id))){
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to get mvlog table id");                                                              
+  } else {
+    const ObTableSchema *base_table_schema = NULL;
+    const ObTableSchema *mvlog_schema = NULL;
+    if (OB_FAIL(schema_checker->get_table_schema(tenant_id, db_name, base_table_name, false, base_table_schema))) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to get base table schema");
+    } else if (OB_ISNULL(base_table_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("table schema should not be null");
+    } else if (OB_FAIL(schema_checker_->get_table_schema(mvlog_table_id, mvlog_schema))) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to get mvlog table schema", K(ret));
+    } else if (OB_ISNULL(mvlog_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("mvlog schema is null", K(mvlog_table_id));
+    } else if (OB_FAIL(try_add_mvlog_dml_info_to_stmt(db_name, mvlog_name, base_table_schema, mvlog_schema))) {
+      LOG_WARN("fail to add dml info to stmt", K(ret));
+    } else if (OB_FAIL(save_mvlog_autoinc_params(mvlog_table_id))) {
+      LOG_WARN("delete resolver fail to save autoinc params");
+    } else {
+      delete_stmt->set_mv_log_table_id(mvlog_table_id); // partition storage use it to update mvlog when deleting base table rows
+    }
+  }
+  return ret;
+}
+
+int ObDeleteResolver::try_add_mvlog_dml_info_to_stmt(const ObString& db_name, const ObString&mvlog_name, const ObTableSchema *base_table_schema, const ObTableSchema *mvlog_schema) {
+  int ret = OB_SUCCESS;
+  IndexDMLInfo index_dml_info;
+  const ObColumnSchemaV2 *col_schema = NULL;
+  ObDeleteStmt *delete_stmt = get_delete_stmt();
+  ObSchemaObjVersion table_version;
+
+  if (OB_ISNULL(base_table_schema) || OB_ISNULL(mvlog_schema) || OB_ISNULL(delete_stmt)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("schema is null", K(base_table_schema), K(mvlog_schema), K(delete_stmt));
+  }
+  
+  for (int64_t i = 0; OB_SUCC(ret) && i < base_table_schema->get_column_count(); ++i) {
+    col_schema = base_table_schema->get_column_schema_by_idx(i);
+    if(col_schema->is_rowkey_column()) {
+      delete_stmt->set_base_table_pk_column_id(col_schema->get_column_id()); // use in resolve_mvlog_all_column_exprs
+      break;
+    }
+  }
+
+  // add IndexDMLInfo to delete_stmt for updating mvlog table
+  if (OB_FAIL(ret)) {
+    // do nothing
+  } else if (OB_FAIL(resolve_mvlog_all_column_exprs(
+        base_table_schema->get_table_id(),
+        mvlog_schema->get_table_name_str(),
+        db_name,
+        *mvlog_schema,
+        index_dml_info.column_exprs_))) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("resolve mvlog column exprs failed", K(ret));
+  } else {
+    index_dml_info.table_id_ = base_table_schema->get_table_id();
+    index_dml_info.loc_table_id_ = delete_stmt->get_table_items().at(0)->get_base_table_item().table_id_; // TODO: magic number 0, use for what? 
+    index_dml_info.index_tid_ = mvlog_schema->get_table_id();
+    index_dml_info.rowkey_cnt_ = mvlog_schema->get_rowkey_column_num();
+    index_dml_info.part_cnt_ = mvlog_schema->get_partition_cnt();
+    index_dml_info.index_type_ = mvlog_schema->get_index_type();
+    index_dml_info.index_name_.assign_ptr(mvlog_name.ptr(), mvlog_name.length());
+    table_version.object_id_ = mvlog_schema->get_table_id();
+    table_version.object_type_ = DEPENDENCY_TABLE;
+    table_version.version_ = mvlog_schema->get_schema_version();
+
+    // TODO(wendongbo): check return code of add_multi_table_dml_info
+    delete_stmt->add_multi_table_dml_info(index_dml_info);
+    delete_stmt->add_global_dependency_table(table_version);
+  }
+  return ret;
+}
 }  // namespace sql
 }  // namespace oceanbase

@@ -95,6 +95,7 @@ ObPhysicalPlan::ObPhysicalPlan(MemoryContext& mem_context /* = CURRENT_CONTEXT *
       is_insert_select_(false),
       contain_paramed_column_field_(false),
       first_array_index_(OB_INVALID_INDEX),
+      mvlog_table_id_(0),
       need_consistent_snapshot_(true),
       is_batched_multi_stmt_(false),
       is_new_engine_(false),

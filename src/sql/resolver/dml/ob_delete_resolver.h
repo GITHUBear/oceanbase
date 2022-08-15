@@ -55,6 +55,11 @@ private:
 
   int try_add_rowid_column_to_stmt(const TableItem& table_item);
 
+  int resolve_mvlog_table(const ParseNode& node);
+  int save_mvlog_autoinc_params(uint64_t mvlog_table_id); // TODO(wendongbo): duplicate with insert resolver, merge them?
+  int try_add_mvlog_dml_info_to_stmt(
+      const common::ObString& db_name, const ObString& mvlog_name, const ObTableSchema *base_table_schema, const ObTableSchema *mvlog_schema);
+
   common::ObSEArray<const TableItem*, 4, common::ModulePageAllocator, true> delete_tables_;
 
   int check_view_deletable();

@@ -1654,6 +1654,14 @@ int ObSql::generate_physical_plan(ParseResult &parse_result, ObPlanCacheCtx *pc_
           //}
         }
 
+        if (OB_SUCC(ret) && stmt::T_DELETE == stmt->get_stmt_type()) {
+          ObDelUpdStmt *delete_stmt = static_cast<ObDelUpdStmt*>(stmt);
+          uint64_t mvlog_table_id = delete_stmt->get_mv_log_table_id();
+          if (mvlog_table_id != 0) {
+            phy_plan->set_mvlog_table_id(mvlog_table_id);
+          }
+        }
+
         // memory debug for sql work arena
         if (OB_UNLIKELY(result.get_mem_pool().total() > SQL_MEM_SIZE_LIMIT)) {
           const char *SQL = parse_result.input_sql_;
