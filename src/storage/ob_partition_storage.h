@@ -708,6 +708,8 @@ private:
       const common::ObIArray<uint64_t> &column_ids, ObRelativeTable &data_table, const common::ObNewRow &new_row);
   
   int generate_autoinc_value(const ObDMLBaseParam &dml_param, uint64_t &inc_value);
+  int insert_mvlog_loop(
+      const ObStoreCtx& ctx, const ObDMLRunningCtx &run_ctx, const ObIArray<uint64_t>& column_ids, ObNewRowIterator* row_iter, const ObDMLBaseParam &dml_param);
   // disallow copy;
   DISALLOW_COPY_AND_ASSIGN(ObPartitionStorage);
 
