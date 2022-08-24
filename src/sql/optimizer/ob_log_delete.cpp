@@ -48,26 +48,23 @@ int ObLogDelete::allocate_expr_post(ObAllocExprContext& ctx)
     LOG_WARN("get unexpected null ptr", K(stmt), K(ret));
   } else {
     mvlog_table_id = stmt->get_mv_log_table_id();
-  }
-  
-  for (int64_t i = 0; OB_SUCC(ret) && i < stmt->get_all_table_columns().count(); ++i) {
-    const TableColumns cols = stmt->get_all_table_columns().at(i);
-    for (int64_t j = 0; j < cols.index_dml_infos_.count(); ++j) {
-      const IndexDMLInfo index_dml_info = cols.index_dml_infos_.at(j);
-      LOG_INFO("delete op alloc expr, test for index dml info", K(index_dml_info.table_id_), K(index_dml_info.index_name_), K(index_dml_info.index_tid_));
+    for (int64_t i = 0; OB_SUCC(ret) && i < stmt->get_all_table_columns().count(); ++i) {
+      const TableColumns cols = stmt->get_all_table_columns().at(i);
+      for (int64_t j = 0; j < cols.index_dml_infos_.count(); ++j) {
+        const IndexDMLInfo index_dml_info = cols.index_dml_infos_.at(j);
 
-      if (index_dml_info.index_tid_ == mvlog_table_id) {
-        for (int64_t t = 0; t < cols.index_dml_infos_.at(j).column_exprs_.count(); ++t){
-          ObColumnRefRawExpr* expr = const_cast<ObColumnRefRawExpr*>(cols.index_dml_infos_.at(j).column_exprs_.at(t));
-          if (OB_NOT_NULL(expr)){
-            // TODO: change this stupid method to some flag(when resolver resolves mvlog column exprs)
-            if (expr->get_column_name()[0] == '_') {  // __pk_increment, _dml_type, _seqno are mvlog columns
-              expr->add_flag(ObExprInfoFlag::IS_HIDDEN_MVLOG_COLUMN);
-            }
-            
-            bool expr_is_required = false;
-            if (OB_FAIL(mark_expr_produced(static_cast<ObRawExpr*>(expr), branch_id_, id_, ctx, expr_is_required))) {
-              LOG_WARN("mark_expr_produced fail", K(ret));
+        if (index_dml_info.index_tid_ == mvlog_table_id) {
+          for (int64_t t = 0; t < cols.index_dml_infos_.at(j).column_exprs_.count(); ++t){
+            ObColumnRefRawExpr* expr = const_cast<ObColumnRefRawExpr*>(cols.index_dml_infos_.at(j).column_exprs_.at(t));
+            if (OB_NOT_NULL(expr)){
+              // TODO(wendongbo): change this stupid method to some flag(when resolver resolves mvlog column exprs)
+              if (expr->get_column_name()[0] == '_') {  // __pk_increment, _dml_type, _seqno are mvlog columns
+                expr->add_flag(ObExprInfoFlag::IS_HIDDEN_MVLOG_COLUMN);
+                bool expr_is_required = false;
+                if (OB_FAIL(mark_expr_produced(static_cast<ObRawExpr*>(expr), branch_id_, id_, ctx, expr_is_required))) {
+                  LOG_WARN("mark_expr_produced fail", K(ret));
+                }
+              }
             }
           }
         }

@@ -3424,8 +3424,9 @@ int ObSql::handle_physical_plan(
             ParseNode* project_node = select_clause_project_list->children_[i]->children_[0];
             ObItemType project_type = project_node->type_;
             switch (project_type) {
-            case T_FUN_SUM: {
-              if (OB_NOT_NULL(project_node->children_[0]) ||
+            case T_FUN_SUM:
+            case T_FUN_AVG: {
+              if (OB_NOT_NULL(project_node->children_[0]) ||  // TODO(wendongbo): do we really need to check it? otherwise we can merge branch
                   OB_ISNULL(project_node->children_[1]) ||
                   project_node->children_[1]->type_ != T_COLUMN_REF) {
                 ret = OB_NOT_SUPPORTED;
@@ -3443,12 +3444,14 @@ int ObSql::handle_physical_plan(
               // TODO:
               break;
             }
-            case T_FUN_AVG: {
-              // TODO:
-              break;
-            }
             case T_FUN_COUNT: {
-              // TODO:
+              if (OB_ISNULL(project_node->children_[1]) ||
+                  project_node->children_[1]->type_ != T_COLUMN_REF) {
+                ret = OB_NOT_SUPPORTED;
+                LOG_WARN("complex aggregate func arg is not supported", K(ret));
+              } else {
+                function_node_pos.push_back(i);
+              }
               break;
             }
             case T_COLUMN_REF: {
@@ -3673,117 +3676,7 @@ int ObSql::handle_physical_plan(
           }
         }
       }
-    } /* else if (stmt_node->type_ == ObItemType::T_CREATE_MATERIALIZED_VIEW_LOG) {
-      LOG_DEBUG("Parsed CREATE MATERIALIZED VIEW LOG statement", K(stmt_node));
-      ParseNode* base_table_name_node = stmt_node->children_[0];
-      if (OB_ISNULL(base_table_name_node)) {
-        ret = OB_ERR_UNEXPECTED;
-        LOG_WARN("get unexpected null", K(ret));
-      } else {
-        ObString database_name = session.get_database_name();
-        uint64_t database_id = 0;
-        bool base_table_exists = false;
-        ObString base_table_name;
-        uint64_t base_table_id = 0;
-        const uint64_t tenant_id = session.get_effective_tenant_id();
-        uint64_t session_id = 0;
-        if (result.get_session().get_session_type() != ObSQLSessionInfo::INNER_SESSION) {
-          session_id = result.get_session().get_sessid_for_table();
-        } else {
-          session_id = OB_INVALID_ID;
-        }
-        base_table_name.assign_ptr(base_table_name_node->str_value_, base_table_name_node->str_len_);
-        // cons schema_checker
-        ObSchemaChecker *schema_checker = NULL;
-        ObIAllocator &allocator = result.get_mem_pool();
-        schema_checker = OB_NEWx(ObSchemaChecker, (&allocator));
-        if (OB_UNLIKELY(NULL == schema_checker)) {
-          ret = OB_ALLOCATE_MEMORY_FAILED;
-          LOG_ERROR("Failed to malloc ObSchemaChecker", K(ret));
-        } else if (OB_ISNULL(context.schema_guard_)) {
-          ret = OB_ERR_UNEXPECTED;
-          LOG_WARN("context schema guard is null", K(ret));
-        } else if (FALSE_IT(context.sql_schema_guard_.set_schema_guard(context.schema_guard_))) {
-        } else if (OB_FAIL(schema_checker->init(context.sql_schema_guard_, session_id))) {
-          ret = OB_ERR_UNEXPECTED;
-          LOG_WARN("fail to init schema_checker", K(ret));
-        } else {
-          // check if table exists
-          if (OB_FAIL(schema_checker->get_database_id(tenant_id, database_name, database_id))) {
-            ret = OB_ERR_UNEXPECTED;
-            LOG_WARN("fail to get database id", K(ret));
-          } else if (OB_FAIL(schema_checker->check_table_exists(tenant_id, database_id, base_table_name, false, base_table_exists))) {
-            ret = OB_ERR_UNEXPECTED;
-            LOG_WARN("fail to check table exists", K(ret));
-          } else if (!base_table_exists) {
-            ret = OB_NOT_SUPPORTED;
-            LOG_WARN("base table not found", K(ret));
-          } else if (OB_FAIL(schema_checker->get_schema_guard()->get_table_id(tenant_id, database_id, base_table_name, 
-                                                                              false, ObSchemaGetterGuard::ALL_TYPES, base_table_id))) {
-            ret = OB_ERR_UNEXPECTED;
-            LOG_WARN("fail to get table id", K(ret));
-          }
-          ParseNode* mv_log_table_name_node = nullptr; // T_RELATION_FACTOR
-          if (OB_SUCC(ret)) {
-            // 1. set MV Log table name: base_table_name_mvlog
-            char* mv_log_table_name = nullptr;
-            mv_log_table_name = static_cast<char*>(parse_malloc(base_table_name_node->str_len_ + 7, parse_result.malloc_pool_));
-            if (OB_ISNULL(mv_log_table_name)) {
-              ret = OB_ALLOCATE_MEMORY_FAILED;
-              LOG_ERROR("Failed to malloc new table name string", K(ret));
-            } else {
-              memmove(mv_log_table_name, base_table_name_node->str_value_, base_table_name_node->str_len_);
-              memmove(mv_log_table_name + base_table_name_node->str_len_, "_mvlog", 6);
-              mv_log_table_name[base_table_name_node->str_len_ + 6] = '\0';
-              if (OB_ISNULL(mv_log_table_name_node = new_terminal_node(parse_result.malloc_pool_, T_IDENT))) {
-                ret = OB_PARSER_ERR_NO_MEMORY;
-                LOG_WARN("No more space for parse malloc\n");
-              }
-              if (OB_SUCC(ret)) {
-                mv_log_table_name_node->str_value_ = mv_log_table_name;
-                mv_log_table_name_node->str_len_ = strlen(mv_log_table_name);
-                if (OB_ISNULL(mv_log_table_name_node = new_non_terminal_node(parse_result.malloc_pool_, T_RELATION_FACTOR, 2, 
-                                                                             NULL, mv_log_table_name_node))) {
-                  ret = OB_PARSER_ERR_NO_MEMORY;
-                  LOG_WARN("No more space for parse malloc\n");
-                } else if (OB_ISNULL(mv_log_table_name_node->str_value_ = parse_strndup(mv_log_table_name_node->children_[1]->str_value_,
-                                                                                        mv_log_table_name_node->children_[1]->str_len_,
-                                                                                        parse_result.malloc_pool_))) {
-                  ret = OB_PARSER_ERR_NO_MEMORY;
-                  LOG_WARN("No more space for parse malloc\n");
-                } else {
-                  mv_log_table_name_node->str_len_ = mv_log_table_name_node->children_[1]->str_len_;
-                }
-              }
-            }
-          }
-          const ObTableSchema* base_table_schema = nullptr;
-          int64_t n_cols = 0;
-          ObArray<const ObColumnSchemaV2*> base_table_col_schema;
-          if (OB_SUCC(ret)) {
-            // 2. get base table schema
-            if (OB_FAIL(schema_checker->get_table_schema(base_table_id, base_table_schema))) {
-              ret = OB_ERR_UNEXPECTED;
-              LOG_WARN("fail to get table schema", K(ret));
-            } else {
-              // get column schemas
-              n_cols = base_table_schema->get_column_count();
-              const ObColumnSchemaV2* tmp = nullptr;
-              for (int64_t i = 0; i < n_cols; ++i) {
-                tmp = base_table_schema->get_column_schema_by_idx(i);
-                const char* col_name = tmp->get_column_name();
-                bool is_rowkey = tmp->is_rowkey_column();
-                (void*)col_name;
-                (void*)is_rowkey;
-                base_table_col_schema.push_back(tmp);
-              }
-            }
-          }
-          // checking if MV Log exists is not necessary
-          // defer it to ObCreateTableResolver
-        }
-      }
-    } */
+    }
   }
 
   generate_sql_id(pc_ctx, add_plan_to_pc, ret);

@@ -57,7 +57,7 @@ int ObDeleteLogPlan::generate_raw_plan()
   if (OB_ISNULL(get_stmt())) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("invalid argument", K(ret));
-  } else if (OB_FAIL(set_autoinc_params(delete_stmt->get_autoinc_params()))) { // TODO(wendongbo): check normal delete
+  } else if (OB_FAIL(set_autoinc_params(delete_stmt->get_autoinc_params()))) { // only set autoinc with mvlog 
     LOG_WARN("failed to set auto-increment params", K(ret));
   } else if (OB_FAIL(generate_plan_tree())) {
     LOG_WARN("failed to generate plan tree for plain select", K(ret));

@@ -600,7 +600,7 @@ int ObDeleteResolver::resolve_mvlog_table(const ParseNode& table_node) {
   int ret = OB_SUCCESS;
   bool mvlog_is_exist = false;
   bool base_is_exist = false;
-  ObSchemaChecker *schema_checker = params_.schema_checker_;  // TODO: use which schema_checker?
+  ObSchemaChecker *schema_checker = params_.schema_checker_;
   ObDeleteStmt *delete_stmt = get_delete_stmt();
   const ParseNode *org_node = NULL;
   const ParseNode *rel_factor_node = NULL;
@@ -632,7 +632,7 @@ int ObDeleteResolver::resolve_mvlog_table(const ParseNode& table_node) {
     char *mvlog_str = static_cast<char*>(params_.allocator_->alloc(rel_factor_node->str_len_ + 7));
     memmove(mvlog_str, rel_factor_node->str_value_, rel_factor_node->str_len_);
     memmove(mvlog_str + rel_factor_node->str_len_, "_mvlog\0", 7);
-    mvlog_name.assign_ptr(mvlog_str, rel_factor_node->str_len_ + 6);
+    mvlog_name.assign_ptr(mvlog_str, rel_factor_node->str_len_ + 7);
   }
 
   // check mvlog and base table existence 
@@ -728,9 +728,11 @@ int ObDeleteResolver::try_add_mvlog_dml_info_to_stmt(const ObString& db_name, co
     table_version.object_type_ = DEPENDENCY_TABLE;
     table_version.version_ = mvlog_schema->get_schema_version();
 
-    // TODO(wendongbo): check return code of add_multi_table_dml_info
-    delete_stmt->add_multi_table_dml_info(index_dml_info);
-    delete_stmt->add_global_dependency_table(table_version);
+    if (OB_FAIL(delete_stmt->add_multi_table_dml_info(index_dml_info))) {
+      LOG_WARN("fail to add mvlog index dml info into stmt". K(ret));
+    } else if (OB_FAIL(delete_stmt->add_global_dependency_table(table_version))) {
+      LOG_WARN("fail to add table version into stmt", K(ret));
+    }
   }
   return ret;
 }
