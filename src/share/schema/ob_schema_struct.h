@@ -190,6 +190,8 @@ enum ObTableType {
   TMP_TABLE_ORA_TRX,   // Temporary tables in oracle compatibility mode, transaction level
   TMP_TABLE_ALL,       // All types of temporary tables, only used for alter system statements
   AUX_VERTIAL_PARTITION_TABLE,
+  MY_MATERIALZED_VIEW,
+  MATERIALIZED_VIEW_LOG,
   MAX_TABLE_TYPE
 };
 

@@ -275,6 +275,9 @@ public:
   // drop/truncate limitation for depend table
   int check_table_has_materialized_view(
       share::schema::ObSchemaGetterGuard& schema_guard, const share::schema::ObTableSchema& table_schema, bool& has_mv);
+  int check_table_has_materialized_view_log(
+      share::schema::ObSchemaGetterGuard& schema_guard, const share::schema::ObTableSchema& table_schema, bool& has_mvlog);
+  int check_drop_mvlog_avaliable(uint64_t table_id, bool& is_valid);
 
   //----Functions for recyclebin ----
 

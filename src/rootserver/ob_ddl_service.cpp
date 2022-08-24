@@ -919,6 +919,12 @@ int ObDDLService::generate_schema(const ObCreateTableArg &arg, ObTableSchema &sc
 
   schema.set_mv_log_table_id(arg.mv_log_table_id_);
   LOG_INFO("create materialized view set table_schema.mv_log_table_id", K(arg.mv_log_table_id_));
+  // if (arg.mv_log_table_id_) {
+  //   schema.set_table_type(MY_MATERIALZED_VIEW);
+  // }
+  // if (arg.is_create_mv_log_) {
+  //   schema.set_table_type(MATERIALIZED_VIEW_LOG);
+  // }
 
   // support to create inner table if enable_sys_table_ddl is opened
   // -- system view                            ----> table_type will be TABLE_TYPE_VIEW
@@ -9625,6 +9631,54 @@ int ObDDLService::check_table_has_materialized_view(
   return ret;
 }
 
+int ObDDLService::check_table_has_materialized_view_log(
+      share::schema::ObSchemaGetterGuard& schema_guard, const share::schema::ObTableSchema& table_schema, bool& has_mvlog)
+{
+  int ret = OB_SUCCESS;
+  ObString mvlog_name;
+  ObString table_name = table_schema.get_table_name_str();
+  char name_ptr[OB_MAX_TABLE_NAME_BUF_LENGTH];
+  memcpy(name_ptr, table_name.ptr(), table_name.length());
+  memcpy(name_ptr + table_name.length(), "_mvlog", 6);
+  mvlog_name.assign_ptr(name_ptr, table_name.length() + 6);
+  if (OB_FAIL(schema_guard.check_table_exist(table_schema.get_tenant_id(), table_schema.get_database_id(), 
+                                             mvlog_name, false, ObSchemaGetterGuard::ALL_TYPES, has_mvlog))) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("check mv log table exist failed", K(ret));
+  }
+  return ret;
+}
+
+int ObDDLService::check_drop_mvlog_avaliable(uint64_t table_id, bool& is_valid)
+{
+  int ret = OB_SUCCESS;
+  HEAP_VAR(common::ObMySQLProxy::MySQLResult, res)
+  {
+    common::sqlclient::ObMySQLResult *result = NULL;
+    ObSqlString sql;
+    int64_t mvlog_ref_cnt = -1;
+    if (OB_FAIL(sql.assign_fmt("SELECT COUNT(*) FROM %s WHERE mvlog_id = %lu",
+                               OB_ALL_MV_INFO_DEF_TNAME, table_id))) {
+      LOG_WARN("assign sql failed", K(ret));
+    } else if (OB_FAIL(sql_proxy_->read(res, sql.ptr()))) {
+      LOG_WARN("execute sql failed", K(ret), K(sql));
+    } else if (OB_ISNULL(result = res.get_result())) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("result set from read is NULL", K(ret));
+    } else if (OB_FAIL(result->next())) {
+      if (OB_ITER_END == ret) {
+        ret = OB_SUCCESS;
+      } else {
+        LOG_WARN("get next result failed", K(ret));
+      }
+    } else if (OB_FAIL(result->get_int(0L, mvlog_ref_cnt))) {
+      LOG_WARN("fail to get int_value.", K(ret));
+    }
+    is_valid = (mvlog_ref_cnt <= 0);
+  }
+  return ret;
+}
+
 // Check whether the oracle temporary table has data for the specified session id
 int ObDDLService::check_sessid_exist_in_temp_table(const ObString &db_name, const ObString &tab_name,
     const uint64_t tenant_id, const uint64_t session_id, bool &exists)
@@ -9963,10 +10017,14 @@ int ObDDLService::drop_table(const ObDropTableArg &drop_table_arg)
         }
         if (OB_SUCC(ret)) {
           if (drop_table_arg.table_type_ == USER_TABLE) {
-            bool has_mv = false;
+            bool has_mv = false;  bool has_mvlog = false; bool mvlog_drop_valid = true;
             if (OB_FAIL(check_table_has_materialized_view(schema_guard, *table_schema, has_mv))) {
               LOG_WARN("fail to check drop table has materialized view", K(ret), K(*table_schema));
-            } else if (has_mv) {
+            } else if (OB_FAIL(check_table_has_materialized_view_log(schema_guard, *table_schema, has_mvlog))) {
+              LOG_WARN("fail to check drop table has materialized view log", K(ret), K(*table_schema));
+            } else if (OB_FAIL(check_drop_mvlog_avaliable(table_schema->get_table_id(), mvlog_drop_valid))) {
+              LOG_WARN("fail to check drop mvlog avaliable", K(ret));
+            } else if (has_mv || has_mvlog || !mvlog_drop_valid) {
               ret = OB_NOT_SUPPORTED;
               LOG_WARN("not support dropping table has materialized view", K(ret));
             }
