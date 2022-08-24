@@ -4507,14 +4507,16 @@ int ObRefreshMaterializedViewResolver::resolve(const ParseNode& parse_tree)
                 } else {
                   // Note: only deal with SUM/COUNT
                   schema.func_type_ = func_type;
-                  if (func_type != 1 && func_type != 5) {
+                  if (func_type != 1 && func_type != 2 && 
+                      func_type != 3 && func_type != 5) {
                     ret = OB_NOT_SUPPORTED;
-                    LOG_WARN("Only SUM or COUNT function is supported now", K(ret));
+                    LOG_WARN("Only SUM/MIN/MAX/COUNT function is supported now", K(ret));
                   } else {
                     ObString func_col_str;
                     func_col_str.assign_ptr(func_col, strlen(func_col));
                     stmt->select_project_strs_.push_back(func_col_str);
-                    stmt->sum_or_count_col_idx_.push_back(stmt->select_project_strs_.count() - 1);
+                    if (func_type == 1 || func_type == 5)
+                      stmt->sum_or_count_col_idx_.push_back(stmt->select_project_strs_.count() - 1);
                     if (OB_FAIL(ob_write_string(*allocator_, column->get_column_name_str(), schema.column_full_name_, true))) {
                       ret = OB_ERR_UNEXPECTED;
                       LOG_WARN("fail to write string", K(ret), K(column->get_column_name_str()));

@@ -2012,6 +2012,16 @@ int ObRefreshMaterializedViewExecutor::delta_refresh(ObMySQLTransaction* trans, 
                               (i != 0) ? ", SUM(%s * _dml_type) as ___c%d" : "SUM(%s * _dml_type) as ___c%d", 
                               schema.func_arg_.ptr(), schema.dummy_func_col_id_);
           break;
+        case 2:
+          cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                              (i != 0) ? ", MIN(%s) as ___c%d" : "MIN(%s) as ___c%d",
+                              schema.func_arg_.ptr(), schema.dummy_func_col_id_);
+          break;
+        case 3:
+          cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                              (i != 0) ? ", MAX(%s) as ___c%d" : "MAX(%s) as ___c%d",
+                              schema.func_arg_.ptr(), schema.dummy_func_col_id_);
+          break;
         case 5:
           cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
                               (i != 0) ? ", SUM(_dml_type) as ___c%d" : "SUM(_dml_type) as ___c%d",
@@ -2040,11 +2050,33 @@ int ObRefreshMaterializedViewExecutor::delta_refresh(ObMySQLTransaction* trans, 
     for (int64_t i = 0; i < stmt_->mv_table_func_col_idx_.count(); ++i) {
       const ObRefreshMaterializedViewStmt::MvTableSimpleSchema& schema = stmt_->mv_table_cols_.at(
                               stmt_->mv_table_func_col_idx_.at(i));
-      cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+      switch (schema.func_type_)
+      {
+      case 1:
+      case 5:
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
                           (i != 0) ? ", %s=%s+___T1.___c%d" : "%s=%s+___T1.___c%d",
                           schema.column_full_name_.ptr(),
                           schema.column_full_name_.ptr(),
                           schema.dummy_func_col_id_);
+        break;
+      case 2:
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                            (i != 0) ? ", %s = LEAST(%s, ___T1.___c%d)" : "%s = LEAST(%s, ___T1.___c%d)",
+                            schema.column_full_name_.ptr(),
+                            schema.column_full_name_.ptr(),
+                            schema.dummy_func_col_id_);
+        break;
+      case 3:
+        cur_idx += snprintf(sql + cur_idx, OB_MAX_SQL_LENGTH,
+                            (i != 0) ? ", %s = GREATEST(%s, ___T1.___c%d)" : "%s = GREATEST(%s, ___T1.___c%d)",
+                            schema.column_full_name_.ptr(),
+                            schema.column_full_name_.ptr(),
+                            schema.dummy_func_col_id_);
+        break;
+      default:
+        break;
+      }
     }
 
     int64_t affected_rows = 0;

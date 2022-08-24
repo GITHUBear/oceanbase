@@ -3416,7 +3416,24 @@ int ObSql::handle_physical_plan(
             ParseNode* project_node = select_clause_project_list->children_[i]->children_[0];
             ObItemType project_type = project_node->type_;
             switch (project_type) {
-            case T_FUN_SUM: {
+            // case T_FUN_SUM: {
+            //   if (OB_NOT_NULL(project_node->children_[0]) ||
+            //       OB_ISNULL(project_node->children_[1]) ||
+            //       project_node->children_[1]->type_ != T_COLUMN_REF) {
+            //     ret = OB_NOT_SUPPORTED;
+            //     LOG_WARN("complex aggregate func arg is not supported", K(ret));
+            //   } else {
+            //     function_node_pos.push_back(i);
+            //   }
+            //   break;
+            // }
+            // case T_FUN_MIN: {
+            //   // TODO:
+            //   break;
+            // }
+            case T_FUN_SUM:
+            case T_FUN_MIN:
+            case T_FUN_MAX: {
               if (OB_NOT_NULL(project_node->children_[0]) ||
                   OB_ISNULL(project_node->children_[1]) ||
                   project_node->children_[1]->type_ != T_COLUMN_REF) {
@@ -3425,14 +3442,6 @@ int ObSql::handle_physical_plan(
               } else {
                 function_node_pos.push_back(i);
               }
-              break;
-            }
-            case T_FUN_MIN: {
-              // TODO:
-              break;
-            }
-            case T_FUN_MAX: {
-              // TODO:
               break;
             }
             case T_FUN_AVG: {
