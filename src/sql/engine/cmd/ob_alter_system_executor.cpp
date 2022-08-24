@@ -2064,12 +2064,12 @@ int ObRefreshMaterializedViewExecutor::delta_refresh(ObMySQLTransaction* trans, 
     }
     
     // delete all rows from mv table with '0' _cnt
-    // snprintf(sql, OB_MAX_SQL_LENGTH,
-    //          "DELETE FROM %s.%s WHERE _cnt=0",
-    //          stmt_->database_name_.ptr(), stmt_->mv_table_name_.ptr());
-    // if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
-    //   LOG_WARN("delta refresh delete invalid row failed", K(ret));
-    // }
+    snprintf(sql, OB_MAX_SQL_LENGTH,
+             "DELETE FROM %s.%s WHERE _cnt=0",
+             stmt_->database_name_.ptr(), stmt_->mv_table_name_.ptr());
+    if (OB_FAIL(sql_client->write(exec_tenant_id, sql, affected_rows))) {
+      LOG_WARN("delta refresh delete invalid row failed", K(ret));
+    }
   }
   return ret;
 }

@@ -84,6 +84,17 @@ int ObTableDeleteOp::inner_open()
     dml_param_.table_param_ = &MY_SPEC.table_param_;
     dml_param_.tenant_schema_version_ = plan_ctx->get_tenant_schema_version();
     NG_TRACE(delete_start_delete);
+    common::ObIArray<share::AutoincParam> &autoinc_params = plan_ctx->get_autoinc_params();
+
+    int64_t autoinc_count = autoinc_params.count();
+    if (autoinc_count >= 1 && autoinc_params.at(autoinc_count - 1).is_mvlog_) {
+      dml_param_.is_mvlog_autoinc_set_ = true;
+      dml_param_.mvlog_autoinc_param_ = autoinc_params.at(autoinc_params.count() - 1);
+    }
+    if (phy_plan->get_mvlog_table_id() != 0) {
+      dml_param_.mvlog_table_id_ = phy_plan->get_mvlog_table_id();
+    }
+
     if (MY_SPEC.gi_above_) {
       if (OB_FAIL(get_gi_task())) {
         LOG_WARN("get granule iterator task failed", K(ret));

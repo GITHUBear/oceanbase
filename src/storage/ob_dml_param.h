@@ -229,6 +229,7 @@ struct ObDMLBaseParam {
   mutable int64_t duplicated_rows_;
   common::ObIAllocator *dml_allocator_;
   bool is_mvlog_autoinc_set_;
+  uint64_t mvlog_table_id_;
   share::AutoincParam mvlog_autoinc_param_;
   bool is_valid() const
   {

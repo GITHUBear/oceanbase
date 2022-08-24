@@ -747,6 +747,14 @@ public:
   {
     return need_serial_exec_;
   }
+  void set_mvlog_table_id(uint64_t mvlog_table_id)
+  {
+    mvlog_table_id_ = mvlog_table_id;
+  }
+  uint64_t get_mvlog_table_id() const
+  {
+    return mvlog_table_id_;
+  }
 
 public:
   static const int64_t MAX_PRINTABLE_SIZE = 2 * 1024 * 1024;
@@ -863,6 +871,7 @@ private:
   // **** for spm end ***
   bool contain_paramed_column_field_;
   int64_t first_array_index_;
+  uint64_t mvlog_table_id_;
   bool need_consistent_snapshot_;
   bool is_batched_multi_stmt_;
 #ifndef NDEBUG

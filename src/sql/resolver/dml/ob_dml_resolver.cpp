@@ -8933,7 +8933,7 @@ int ObDMLResolver::resolve_mvlog_all_column_exprs(uint64_t base_table_id, const 
             if (!dml_stmt->is_dml_write_stmt()) {
               ret = OB_ERR_UNEXPECTED;
               LOG_WARN("resolve mvlog only supports for DelUpdStmt", K(ret));
-            } else {
+            } else {  // find data column in base table
               del_upd_stmt = static_cast<ObDelUpdStmt*>(dml_stmt);
               uint64_t base_pk_col_id = del_upd_stmt->get_base_table_pk_column_id();
               if (OB_ISNULL(col_item = find_col_by_base_col_id(*dml_stmt, base_table_id, base_pk_col_id))) {
