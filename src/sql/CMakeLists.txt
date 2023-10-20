@@ -1057,6 +1057,7 @@ ob_set_subtarget(ob_sql resolver_ddl
   resolver/ddl/ob_drop_tablegroup_resolver.cpp
   resolver/ddl/ob_drop_tenant_resolver.cpp
   resolver/ddl/ob_drop_tenant_stmt.cpp
+  resolver/ddl/ob_exp_imp_table_resolver.cpp
   resolver/ddl/ob_explain_resolver.cpp
   resolver/ddl/ob_explain_stmt.cpp
   resolver/ddl/ob_flashback_resolver.cpp

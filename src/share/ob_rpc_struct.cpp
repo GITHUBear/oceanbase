@@ -2561,6 +2561,34 @@ OB_SERIALIZE_MEMBER((ObDropTableArg, ObDDLArg),
                     force_drop_,
                     compat_mode_);
 
+int ObExpdpImpdpTableArg::assign(const ObExpdpImpdpTableArg &other)
+{
+  int ret = OB_SUCCESS;
+  if (this == &other) {
+    //do nothing
+  } else if (OB_FAIL(ObDDLArg::assign(other))) {
+    LOG_WARN("assign failed", K(ret));
+  } else {
+    tenant_id_ = other.tenant_id_;
+    data_pump_mode_ = other.data_pump_mode_;
+    dumpfile_path_ = other.dumpfile_path_;
+    for (int64_t i = 0; OB_SUCC(ret) && i < other.tables_.count(); i++) {
+      ObTableItem table_item;
+      table_item.mode_ = other.tables_.at(i).mode_;
+      OZ (ob_write_string(allocator_, other.tables_.at(i).table_name_, table_item.table_name_));
+      OZ (ob_write_string(allocator_, other.tables_.at(i).database_name_, table_item.database_name_));
+      OZ (tables_.push_back(table_item));
+    }
+  }
+  return ret;
+}
+
+OB_SERIALIZE_MEMBER((ObExpdpImpdpTableArg, ObDDLArg),
+                    tenant_id_,
+                    data_pump_mode_,
+                    dumpfile_path_,
+                    tables_);
+
 bool ObOptimizeTableArg::is_valid() const
 {
   return (OB_INVALID_ID != tenant_id_ && tables_.count() > 0);

@@ -2177,6 +2177,42 @@ public:
   common::ObArenaAllocator allocator_;
 };
 
+struct ObExpdpImpdpTableArg : public ObDDLArg
+{
+  OB_UNIS_VERSION(1);
+public:
+  enum class PumpMode {
+    PUMP_MODE_INVALID,
+    PUMP_MODE_EXPDP,
+    PUMP_MDOE_IMPDP,
+  };
+  ObExpdpImpdpTableArg() :
+    ObDDLArg(),
+    tenant_id_(common::OB_INVALID_ID),
+    data_pump_mode_(PumpMode::PUMP_MODE_INVALID),
+    dumpfile_path_(),
+    tables_() 
+  {}
+  virtual ~ObExpdpImpdpTableArg() { tables_.reset(); }
+
+  virtual bool is_allow_when_upgrade() const { return true; }
+  virtual int assign(const ObExpdpImpdpTableArg &other);
+
+  bool is_valid() const { return tenant_id_ != common::OB_INVALID_ID && 
+                                 data_pump_mode_ != PumpMode::PUMP_MODE_INVALID && 
+                                 tables_.count() > 0; }
+  ObExpdpImpdpTableArg &operator=(const ObExpdpImpdpTableArg &other) = delete;
+  ObExpdpImpdpTableArg(const ObExpdpImpdpTableArg &other) = delete;
+
+  TO_STRING_KV(K_(tenant_id), K_(data_pump_mode), K_(dumpfile_path), K_(tables));
+
+  uint64_t tenant_id_;
+  PumpMode data_pump_mode_;
+  ObString dumpfile_path_;
+  common::ObSArray<ObTableItem> tables_;
+  common::ObArenaAllocator allocator_;
+};
+
 struct ObOptimizeTableArg : public ObDDLArg
 {
   OB_UNIS_VERSION(1);

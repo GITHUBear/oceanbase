@@ -131,6 +131,7 @@
 #include "pl/ob_pl_package.h"
 #include "sql/resolver/ddl/ob_create_context_resolver.h"
 #include "sql/resolver/ddl/ob_drop_context_resolver.h"
+#include "sql/resolver/ddl/ob_exp_imp_table_resolver.h"
 #ifdef OB_BUILD_TDE_SECURITY
 #include "sql/resolver/ddl/ob_create_tablespace_resolver.h"
 #include "sql/resolver/ddl/ob_alter_tablespace_resolver.h"
@@ -1146,6 +1147,11 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
       }
       case T_TABLE_TTL: {
         REGISTER_STMT_RESOLVER(TableTTL);
+        break;
+      }
+      case T_EXPDP:
+      case T_IMPDP: {
+        REGISTER_STMT_RESOLVER(ExpImpTable);
         break;
       }
       default: {

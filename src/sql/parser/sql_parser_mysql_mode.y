@@ -273,7 +273,7 @@ END_P SET_VAR DELIMITER
         DATABASE_ID DEFAULT_TABLEGROUP DISCONNECT
 
         EFFECTIVE EMPTY ENABLE ENABLE_ARBITRATION_SERVICE ENABLE_EXTENDED_ROWID ENCRYPTED ENCRYPTION END ENDS ENFORCED ENGINE_ ENGINES ENUM ENTITY ERROR_CODE ERROR_P ERRORS ESTIMATE
-        ESCAPE EVENT EVENTS EVERY EXCHANGE EXECUTE EXPANSION EXPIRE EXPIRE_INFO EXPORT OUTLINE EXTENDED
+        ESCAPE EVENT EVENTS EVERY EXCHANGE EXECUTE EXPANSION EXPDP EXPIRE EXPIRE_INFO EXPORT OUTLINE EXTENDED
         EXTENDED_NOADDR EXTENT_SIZE EXTRACT EXCEPT EXPIRED ENCODING EMPTY_FIELD_AS_NULL EXTERNAL
 
         FAILOVER FAST FAULTS FIELDS FILEX FINAL_COUNT FIRST FIRST_VALUE FIXED FLUSH FOLLOWER FORMAT
@@ -285,7 +285,7 @@ END_P SET_VAR DELIMITER
 
         HANDLER HASH HELP HISTOGRAM HOST HOSTS HOUR HIDDEN HYBRID_HIST
 
-        ID IDC IDENTIFIED IGNORE_SERVER_IDS ILOG IMPORT INCR INDEXES INDEX_TABLE_ID INFO INITIAL_SIZE
+        ID IDC IDENTIFIED IGNORE_SERVER_IDS ILOG IMPDP IMPORT INCR INDEXES INDEX_TABLE_ID INFO INITIAL_SIZE
         INNODB INSERT_METHOD INSTALL INSTANCE INVOKER IO IOPS_WEIGHT IO_THREAD IPC ISOLATE ISOLATION ISSUER
         INCREMENT IS_TENANT_SYS_POOL INVISIBLE MERGE ISNULL INTERSECT INCREMENTAL INNER_PARSE ILOGCACHE INPUT INDEXED
 
@@ -518,6 +518,7 @@ END_P SET_VAR DELIMITER
 %type <node> json_table_ordinality_column_def json_table_exists_column_def json_table_value_column_def json_table_nested_column_def
 %type <node> opt_value_on_empty_or_error_or_mismatch opt_on_mismatch
 %type <node> table_values_caluse table_values_caluse_with_order_by_and_limit values_row_list row_value
+%type <node> expdp_stmt impdp_stmt
 
 %type <node> ttl_definition ttl_expr ttl_unit
 %start sql_stmt
@@ -685,6 +686,8 @@ stmt:
   | method_opt              { $$ = $1; check_question_mark($$, result); }
   | switchover_tenant_stmt   { $$ = $1; check_question_mark($$, result); }
   | recover_tenant_stmt   { $$ = $1; check_question_mark($$, result); }
+  | expdp_stmt            { $$ = $1; check_question_mark($$, result); }
+  | impdp_stmt            { $$ = $1; check_question_mark($$, result); }
   ;
 
 /*****************************************************************************
@@ -8263,6 +8266,25 @@ expr { $$ = $1;}
 | DEFAULT
 {
   malloc_terminal_node($$, result->malloc_pool_, T_DEFAULT);
+}
+;
+
+/*****************************************************************************
+ *
+ *	expdp/impdp grammar
+ *
+ *****************************************************************************/
+
+expdp_stmt:
+EXPDP DUMPFILE COMP_EQ STRING_VALUE TABLE COMP_EQ normal_relation_factor
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_EXPDP, 2, $4, $7);
+}
+;
+impdp_stmt:
+IMPDP DUMPFILE COMP_EQ STRING_VALUE TABLE COMP_EQ normal_relation_factor
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_IMPDP, 2, $4, $7);
 }
 ;
 

@@ -974,6 +974,7 @@ class SqlKeywords:
          EXCHANGE
          EXECUTE
          EXPANSION
+         EXPDP
          EXPIRE
          EXPORT
          EXTENDED
@@ -1004,6 +1005,7 @@ class SqlKeywords:
          HOUR
          IDENTIFIED
          IGNORE_SERVER_IDS
+         IMPDP
          IMPORT
          INDEXES
          INITIAL_SIZE
@@ -1602,6 +1604,7 @@ class SqlKeywords:
          EXCHANGE
          EXECUTE
          EXPANSION
+         EXPDP
          EXPIRE
          EXPIRE_INFO
          EXPORT
@@ -1640,6 +1643,7 @@ class SqlKeywords:
          IDENTIFIED
          IGNORE
          IGNORE_SERVER_IDS
+         IMPDP
          IMPORT
          INDEXES
          INITIAL_SIZE
