@@ -213,7 +213,7 @@ ob_set_subtarget(ob_sql engine_cmd
   engine/cmd/ob_context_executor.cpp
   engine/cmd/ob_table_direct_insert_ctx.cpp
   engine/cmd/ob_table_direct_insert_service.cpp
-
+  engine/cmd/ob_pump_table_executor.cpp
 )
 
 ob_set_subtarget(ob_sql engine_dml

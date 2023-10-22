@@ -344,6 +344,8 @@ DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_RECOVER_RESTORE_TABLE_DDL, ObRpcRecoverRes
 DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_PARALLEL_CREATE_TABLE, ObRpcParallelCreateTableP, parallel_create_table(arg_, result_));
 DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_ALTER_TABLE, ObRpcAlterTableP, alter_table(arg_, result_));
 DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_DROP_TABLE, ObRpcDropTableP, drop_table(arg_, result_));
+DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_EXPDP_TABLE, ObRpcExpdpTableP, expdp_table(arg_));
+DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_IMPDP_TABLE, ObRpcImpdpTableP, impdp_table(arg_));
 DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_RENAME_TABLE, ObRpcRenameTableP, rename_table(arg_));
 DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_TRUNCATE_TABLE, ObRpcTruncateTableP, truncate_table(arg_, result_));
 DEFINE_DDL_RS_RPC_PROCESSOR(obrpc::OB_TRUNCATE_TABLE_V2, ObRpcTruncateTableV2P, truncate_table_v2(arg_, result_));

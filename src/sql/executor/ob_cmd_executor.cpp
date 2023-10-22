@@ -142,6 +142,8 @@
 #include "sql/resolver/ddl/ob_create_context_resolver.h"
 #include "sql/resolver/ddl/ob_drop_context_resolver.h"
 #include "sql/engine/cmd/ob_context_executor.h"
+#include "sql/resolver/ddl/ob_exp_imp_table_stmt.h"
+#include "sql/engine/cmd/ob_pump_table_executor.h"
 #ifdef OB_BUILD_TDE_SECURITY
 #include "sql/resolver/ddl/ob_create_keystore_stmt.h"
 #include "sql/resolver/ddl/ob_alter_keystore_stmt.h"
@@ -1003,6 +1005,10 @@ int ObCmdExecutor::execute(ObExecContext &ctx, ObICmd &cmd)
       }
       case stmt::T_TABLE_TTL: {
         DEFINE_EXECUTE_CMD(ObTableTTLStmt, ObTableTTLExecutor);
+        break;
+      }
+      case stmt::T_PUMP_TABLE: {
+        DEFINE_EXECUTE_CMD(ObExpImpTableStmt, ObPumpTableExecutor);
         break;
       }
       case stmt::T_CS_DISKMAINTAIN:

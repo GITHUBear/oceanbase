@@ -10,8 +10,8 @@
  * See the Mulan PubL v2 for more details.
  */
 
-#ifndef OCEANBASE_SQL_RESOLVER_DDL_DROP_TABLE_STMT_
-#define OCEANBASE_SQL_RESOLVER_DDL_DROP_TABLE_STMT_
+#ifndef OCEANBASE_SQL_RESOLVER_EXP_IMP_TABLE_STMT_
+#define OCEANBASE_SQL_RESOLVER_EXP_IMP_TABLE_STMT_
 
 #include "share/ob_rpc_struct.h"
 #include "sql/resolver/ddl/ob_ddl_stmt.h"

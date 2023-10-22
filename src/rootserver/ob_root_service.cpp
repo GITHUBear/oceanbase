@@ -4359,6 +4359,20 @@ int ObRootService::drop_table(const obrpc::ObDropTableArg &arg, obrpc::ObDDLRes 
   return ret;
 }
 
+int ObRootService::expdp_table(const obrpc::ObExpdpImpdpTableArg &arg)
+{
+  int ret = OB_SUCCESS;
+  LOG_INFO("expdp_table");
+  return ret;
+}
+
+int ObRootService::impdp_table(const obrpc::ObExpdpImpdpTableArg &arg)
+{
+  int ret = OB_SUCCESS;
+  LOG_INFO("impdp_table");
+  return ret;
+}
+
 int ObRootService::drop_database(const obrpc::ObDropDatabaseArg &arg, ObDropDatabaseRes &drop_database_res)
 {
   int ret = OB_SUCCESS;
