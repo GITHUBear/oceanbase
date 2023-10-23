@@ -166,6 +166,7 @@ namespace observer
   class ObTenantMetaChecker;
   class QueueThread;
   class ObTableLoadService;
+  class ObTenantPumpTableStandaloneService;
 }
 
 // for ObTenantSwitchGuard 临时使用>>>>>>>>
@@ -316,7 +317,8 @@ using ObTableScanIteratorObjPool = common::ObServerObjectPool<oceanbase::storage
       omt::ObTenantSrs*,                            \
       table::ObHTableLockMgr*,                      \
       table::ObTTLService*,                         \
-      table::ObTableApiSessPoolMgr*                \
+      table::ObTableApiSessPoolMgr*,                \
+      observer::ObTenantPumpTableStandaloneService* \
   )
 
 

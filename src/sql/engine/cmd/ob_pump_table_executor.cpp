@@ -47,12 +47,16 @@ int ObPumpTableExecutor::execute(ObExecContext &ctx, ObExpImpTableStmt &stmt)
         } else if (OB_ISNULL(common_rpc_proxy)){
             ret = OB_ERR_UNEXPECTED;
             LOG_WARN("common rpc proxy should not be null", K(ret));
-        } else if (pump_table_arg.data_pump_mode_ == obrpc::ObExpdpImpdpTableArg::PumpMode::PUMP_MODE_EXPDP &&
+        } /*else if (pump_table_arg.data_pump_mode_ == obrpc::ObExpdpImpdpTableArg::PumpMode::PUMP_MODE_EXPDP &&
                    OB_FAIL(common_rpc_proxy->expdp_table(pump_table_arg))) {
             LOG_WARN("rpc proxy expdp table failed", K(ret), "dst", common_rpc_proxy->get_server());
         } else if (pump_table_arg.data_pump_mode_ == obrpc::ObExpdpImpdpTableArg::PumpMode::PUMP_MDOE_IMPDP &&
                    OB_FAIL(common_rpc_proxy->impdp_table(pump_table_arg))) {
             LOG_WARN("rpc proxy impdp table failed", K(ret), "dst", common_rpc_proxy->get_server());
+        }*/ 
+        // Only use in standalone mode
+        else if (GCTX.srv_rpc_proxy_->to(GCTX.self_addr()).by(MTL_ID()).pump_table(pump_table_arg)) {
+            LOG_WARN("pump_table failed", K(ret), "dst", common_rpc_proxy->get_server());
         }
     }
     return ret;

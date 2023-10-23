@@ -4362,14 +4362,59 @@ int ObRootService::drop_table(const obrpc::ObDropTableArg &arg, obrpc::ObDDLRes 
 int ObRootService::expdp_table(const obrpc::ObExpdpImpdpTableArg &arg)
 {
   int ret = OB_SUCCESS;
-  LOG_INFO("expdp_table");
+  uint64_t tenant_id = arg.exec_tenant_id_;
+  const ObTableSchema* table_schema = nullptr;
+  ObSchemaGetterGuard schema_guard;
+
+  if (OB_UNLIKELY(arg.data_pump_mode_ != obrpc::ObExpdpImpdpTableArg::PumpMode::PUMP_MODE_EXPDP)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid data pump mode", K(ret), K(arg.data_pump_mode_));
+  } else if (OB_UNLIKELY(!arg.is_valid())) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", K(ret), K(arg));
+  } else if (OB_FAIL(ObMultiVersionSchemaService::get_instance().get_tenant_schema_guard(tenant_id, schema_guard))) {
+    LOG_WARN("get tenant schema guard failed", K(ret), K(tenant_id));
+  }
+
+  for (int64_t i = 0; OB_SUCC(ret) && i < arg.tables_.count(); ++i) {
+    const ObTableItem& table_item = arg.tables_.at(i);
+    table_schema = nullptr;
+    ObArray<ObTabletID> tablet_ids;
+    ObArray<uint64_t> part_ids;
+
+    if (OB_FAIL(schema_guard.get_table_schema(tenant_id, table_item.database_name_, table_item.table_name_, 
+                                      false, table_schema))) {
+      LOG_WARN("get table schema failed", K(ret), K(table_item.database_name_), K(table_item.table_name_));
+    } else if (OB_ISNULL(table_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("cannot find table schema", K(ret));
+    } else if (OB_FAIL(table_schema->get_all_tablet_and_object_ids(tablet_ids, part_ids))) {
+      LOG_WARN("get tablet & object ids failed", K(ret));
+    }
+
+    // TODO: metadata export
+    
+    for (int64_t j = 0; OB_SUCC(ret) && j < tablet_ids.count(); ++j) {
+      const ObTabletID& tablet_id = tablet_ids.at(j);
+      LOG_INFO("tablet_id: ", K(tablet_id));
+      // TODO: data export
+
+    }
+
+    // TODO: Multi Table Export is not supported. 
+  }
+
   return ret;
 }
 
 int ObRootService::impdp_table(const obrpc::ObExpdpImpdpTableArg &arg)
 {
   int ret = OB_SUCCESS;
-  LOG_INFO("impdp_table");
+  // LOG_INFO("impdp_table");
+  if (OB_UNLIKELY(arg.data_pump_mode_ != obrpc::ObExpdpImpdpTableArg::PumpMode::PUMP_MDOE_IMPDP)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid data pump mode", K(ret), K(arg.data_pump_mode_));
+  }
   return ret;
 }
 

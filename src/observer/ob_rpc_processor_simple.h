@@ -255,6 +255,7 @@ OB_DEFINE_PROCESSOR_S(Srv, OB_BROADCAST_CONSENSUS_VERSION, ObBroadcastConsensusV
 OB_DEFINE_PROCESSOR_S(Srv, OB_GET_LS_REPLAYED_SCN, ObRpcGetLSReplayedScnP);
 OB_DEFINE_PROCESSOR_S(Srv, OB_TABLE_TTL, ObTenantTTLP);
 OB_DEFINE_PROCESSOR_S(Srv, OB_HA_UNLOCK_MEMBER_LIST, ObAdminUnlockMemberListP);
+OB_DEFINE_PROCESSOR_S(Srv, OB_TENANT_PUMP_TABLE, ObRpcPumpTableP);
 
 } // end of namespace observer
 } // end of namespace oceanbase

@@ -73,6 +73,7 @@
 #include "sql/session/ob_sql_session_info.h"
 #include "sql/session/ob_sess_info_verify.h"
 #include "observer/table/ttl/ob_ttl_service.h"
+#include "observer/ob_tenant_pump_table_standalone_service.h"
 
 namespace oceanbase
 {
@@ -2838,6 +2839,19 @@ int ObAdminUnlockMemberListP::process()
     COMMON_LOG(WARN, "ob_service is null", KR(ret));
   } else if (OB_FAIL(gctx_.ob_service_->ob_admin_unlock_member_list(arg_))) {
     COMMON_LOG(WARN, "failed to unlock member list", KR(ret), K(arg_));
+  }
+  return ret;
+}
+
+int ObRpcPumpTableP::process()
+{
+  int ret = OB_SUCCESS;
+  observer::ObTenantPumpTableStandaloneService* pump_table_srv = MTL(observer::ObTenantPumpTableStandaloneService*);
+  if (OB_ISNULL(pump_table_srv)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("pump_table_srv is null", KR(ret));
+  } else if (OB_FAIL(pump_table_srv->do_work(arg_))) {
+    LOG_WARN("pump_table_srv do_work failed", K(ret), K(arg_));
   }
   return ret;
 }

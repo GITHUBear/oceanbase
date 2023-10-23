@@ -51,7 +51,7 @@ int ObExpImpTableResolver::resolve(const ParseNode &parse_tree)
     if (OB_SUCC(ret)) {
         obrpc::ObExpdpImpdpTableArg &pump_table_arg = pump_table_stmt->get_pump_table_arg();
 
-        pump_table_arg.tenant_id_ = session_info_->get_effective_tenant_id();
+        pump_table_arg.tenant_id_ = MTL_ID();
         if (T_EXPDP == parse_tree.type_) {
             pump_table_arg.data_pump_mode_ = obrpc::ObExpdpImpdpTableArg::PumpMode::PUMP_MODE_EXPDP;
         } else {
@@ -74,7 +74,7 @@ int ObExpImpTableResolver::resolve(const ParseNode &parse_tree)
                 SQL_RESV_LOG(WARN, "failed to add table item!", K(table_item), K(ret));
             } else if (T_EXPDP != parse_tree.type_) {
                 // do nothing
-            } else if (OB_FAIL(schema_checker_->check_table_exists(session_info_->get_effective_tenant_id(),
+            } else if (OB_FAIL(schema_checker_->check_table_exists(MTL_ID(),
                                                             db_name,
                                                             table_name,
                                                             false,
