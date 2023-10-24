@@ -1115,7 +1115,7 @@ int ObMultipleMerge::prepare_read_tables(bool refresh)
     ret = OB_ERR_SYS;
     LOG_WARN("base version should be 0", K(ret), K(access_ctx_->trans_version_range_.base_version_));
   } else if (!refresh && get_table_param_.tablet_iter_.table_iter()->is_valid()) {
-    if (OB_FAIL(prepare_tables_from_iterator(*get_table_param_.tablet_iter_.table_iter()))) {
+    if (OB_FAIL(prepare_tables_from_iterator(*get_table_param_.tablet_iter_.table_iter(), &get_table_param_.sample_info_))) {
       LOG_WARN("prepare tables fail", K(ret), K(get_table_param_.tablet_iter_.table_iter()));
     }
   } else if (OB_FAIL(FALSE_IT(get_table_param_.tablet_iter_.table_iter()->reset()))) {

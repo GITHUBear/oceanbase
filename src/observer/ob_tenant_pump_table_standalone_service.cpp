@@ -109,6 +109,7 @@ int ObTenantPumpTableStandaloneService::expdp_table_work(const obrpc::ObExpdpImp
             ObLSLocation location;
             ObLSID ls_id;
             ObAddr leader_addr;
+            storage::ObDirectExport direct_exp;
 
             if (OB_FAIL(fetch_ls_location(tenant_id, tablet_id, location, ls_id))) {
                 LOG_WARN("fetch ls location failed", K(ret), K(tenant_id), K(tablet_id));
@@ -117,10 +118,10 @@ int ObTenantPumpTableStandaloneService::expdp_table_work(const obrpc::ObExpdpImp
             } else if (OB_UNLIKELY(leader_addr != MYADDR)) {
                 ret = OB_NOT_SUPPORTED;
                 LOG_WARN("distributed mode is not support", K(ret));
-            } else {
-                // TODO: data export
-                // init direct_export:
-                // ls_id, tenant_id, table_id, tablet_id, INT64_MAX, export_dir
+            } else if (OB_FAIL(direct_exp.init(ls_id, tenant_id, table_id, tablet_id, arg.dumpfile_path_))) {
+                LOG_WARN("init direct export failed", K(ret), K(ls_id), K(tenant_id), K(table_id), K(tablet_id), K(arg.dumpfile_path_));
+            } else if (OB_FAIL(direct_exp.dump_minor_sst())) {
+                LOG_WARN("dump sst failed", K(ret));
             }
         }
 

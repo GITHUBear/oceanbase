@@ -672,6 +672,11 @@ ob_set_subtarget(ob_storage lob
   lob/ob_lob_rpc_struct.cpp
 )
 
+ob_set_subtarget(ob_storage data_pump
+  data_pump/ob_direct_export.cpp
+  data_pump/ob_local_scanner.cpp
+)
+
 ob_add_new_object_target(ob_storage ob_storage)
 
 target_link_libraries(ob_storage PUBLIC ob_base)

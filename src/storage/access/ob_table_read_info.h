@@ -242,7 +242,9 @@ public:
       const bool is_oracle_mode,
       const common::ObIArray<ObColDesc> &cols_desc,
       const common::ObIArray<int32_t> *storage_cols_index,
-      const common::ObIArray<ObColumnParam *> *cols_param = nullptr);
+      const common::ObIArray<ObColumnParam *> *cols_param = nullptr,
+      bool is_multi_version_full = false);   // set true when storage_cols_index include MVCC column index
+                                             // memtable do not involve the MVCC column
   virtual OB_INLINE bool is_valid() const override
   {
     return ObReadInfoStruct::is_valid()

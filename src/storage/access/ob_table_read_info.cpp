@@ -242,7 +242,8 @@ int ObTableReadInfo::init(
     const bool is_oracle_mode,
     const common::ObIArray<ObColDesc> &cols_desc,
     const common::ObIArray<int32_t> *storage_cols_index,
-    const common::ObIArray<ObColumnParam *> *cols_param)
+    const common::ObIArray<ObColumnParam *> *cols_param,
+    bool is_multi_version_full)
 {
   int ret = OB_SUCCESS;
   const int64_t out_cols_cnt = cols_desc.count();
@@ -270,29 +271,49 @@ int ObTableReadInfo::init(
     } else if (nullptr != cols_param && OB_FAIL(cols_param_.init_and_assign(*cols_param, allocator))) {
       LOG_WARN("Fail to assign cols_param", K(ret));
     } else {
-      int32_t col_index = OB_INVALID_INDEX;
-      for (int64_t i = 0; i < out_cols_cnt; i++) {
-        col_index = (nullptr == storage_cols_index) ? i : storage_cols_index->at(i);
-        //memtable do not involve the multi version column
-        memtable_cols_index_.array_[i] = col_index;
-        if (i < schema_rowkey_cnt) {
-          // continue
-        } else if (OB_INVALID_INDEX == col_index) {
-          if (common::OB_HIDDEN_TRANS_VERSION_COLUMN_ID == cols_desc.at(i).col_id_) {
-            trans_col_index_ = i;
-            col_index = trans_version_col_idx;
-          } else if (common::OB_HIDDEN_SQL_SEQUENCE_COLUMN_ID == cols_desc.at(i).col_id_) {
-            col_index = sql_sequence_col_idx;
-          } else if (common::OB_HIDDEN_GROUP_IDX_COLUMN_ID == cols_desc.at(i).col_id_) {
-            group_idx_col_index_ = i;
-            col_index = -1;
+      if (!is_multi_version_full) {
+        int32_t col_index = OB_INVALID_INDEX;
+        for (int64_t i = 0; i < out_cols_cnt; i++) {
+          col_index = (nullptr == storage_cols_index) ? i : storage_cols_index->at(i);
+          //memtable do not involve the multi version column
+          memtable_cols_index_.array_[i] = col_index;
+          if (i < schema_rowkey_cnt) {
+            // continue
+          } else if (OB_INVALID_INDEX == col_index) {
+            if (common::OB_HIDDEN_TRANS_VERSION_COLUMN_ID == cols_desc.at(i).col_id_) {
+              trans_col_index_ = i;
+              col_index = trans_version_col_idx;
+            } else if (common::OB_HIDDEN_SQL_SEQUENCE_COLUMN_ID == cols_desc.at(i).col_id_) {
+              col_index = sql_sequence_col_idx;
+            } else if (common::OB_HIDDEN_GROUP_IDX_COLUMN_ID == cols_desc.at(i).col_id_) {
+              group_idx_col_index_ = i;
+              col_index = -1;
+            } else {
+              col_index = -1;
+            }
           } else {
-            col_index = -1;
+            col_index = col_index + storage::ObMultiVersionRowkeyHelpper::get_extra_rowkey_col_cnt();
           }
-        } else {
-          col_index = col_index + storage::ObMultiVersionRowkeyHelpper::get_extra_rowkey_col_cnt();
+          cols_index_.array_[i] = col_index;
         }
-        cols_index_.array_[i] = col_index;
+      } else {
+        trans_col_index_ = trans_version_col_idx;
+        for (int64_t i = 0; i < out_cols_cnt; i++) {
+          if (common::OB_HIDDEN_GROUP_IDX_COLUMN_ID == cols_desc.at(i).col_id_) { // batch NLJ
+            group_idx_col_index_ = i;
+            cols_index_.array_[i] = -1;
+            memtable_cols_index_.array_[i] = -1;
+          } else {
+            cols_index_.array_[i] = i;
+            if (i < schema_rowkey_cnt) {
+              memtable_cols_index_.array_[i] = i;
+            } else if (i < rowkey_cnt_) {
+              memtable_cols_index_.array_[i] = OB_INVALID_INDEX;
+            } else {
+              memtable_cols_index_.array_[i] = i - storage::ObMultiVersionRowkeyHelpper::get_extra_rowkey_col_cnt();
+            }
+          }
+        }
       }
     }
   }

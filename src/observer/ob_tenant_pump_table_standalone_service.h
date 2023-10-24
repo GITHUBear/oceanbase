@@ -38,6 +38,7 @@ private:
     int impdp_table_work(const obrpc::ObExpdpImpdpTableArg& arg);
     bool is_inited_;
 
+    common::ObArenaAllocator allocator_;
     // TODO: start QUEUE_THREAD
 };
 
